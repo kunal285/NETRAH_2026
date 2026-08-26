@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#020617"/>
+      <stop offset="50%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#0284c7"/>
+    </linearGradient>
+    <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0ea5e9"/>
+      <stop offset="50%" stop-color="#0284c7"/>
+      <stop offset="100%" stop-color="#0369a1"/>
+    </linearGradient>
+    <linearGradient id="sirenRed" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f43f5e"/>
+      <stop offset="100%" stop-color="#be123c"/>
+    </linearGradient>
+    <linearGradient id="sirenBlue" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#0284c7"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- Background Rounded Canvas -->
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect width="504" height="504" x="4" y="4" rx="108" fill="none" stroke="#38bdf8" stroke-width="4" stroke-opacity="0.3"/>
+
+  <!-- Tactical Grid Accent -->
+  <path d="M64 256 H448 M256 64 V448" stroke="#38bdf8" stroke-width="2" stroke-opacity="0.15"/>
+  <circle cx="256" cy="256" r="160" fill="none" stroke="#38bdf8" stroke-width="2" stroke-opacity="0.15" stroke-dasharray="8 8"/>
+
+  <!-- Robot / Security Shield Base -->
+  <path d="M256 80 L384 136 V264 C384 340 328 408 256 432 C184 408 128 340 128 264 V136 Z" 
+        fill="url(#shieldGrad)" 
+        stroke="#7dd3fc" 
+        stroke-width="8" 
+        filter="url(#glow)"/>
+
+  <!-- Netra / Police Beacon Crown -->
+  <path d="M200 160 H312 L300 200 H212 Z" fill="#0f172a" stroke="#38bdf8" stroke-width="3"/>
+  <rect x="210" y="165" width="40" height="25" rx="4" fill="url(#sirenRed)"/>
+  <rect x="262" y="165" width="40" height="25" rx="4" fill="url(#sirenBlue)"/>
+
+  <!-- Optical Camera Eye / Radar Aperture -->
+  <circle cx="256" cy="272" r="54" fill="#020617" stroke="#38bdf8" stroke-width="6"/>
+  <circle cx="256" cy="272" r="36" fill="#0369a1" stroke="#7dd3fc" stroke-width="4"/>
+  <circle cx="256" cy="272" r="18" fill="#38bdf8"/>
+  <circle cx="248" cy="264" r="6" fill="#ffffff"/>
+
+  <!-- Skid-Steer Treads / Wheels indicator -->
+  <rect x="156" y="240" width="16" height="64" rx="4" fill="#0f172a" stroke="#38bdf8" stroke-width="3"/>
+  <rect x="340" y="240" width="16" height="64" rx="4" fill="#0f172a" stroke="#38bdf8" stroke-width="3"/>
+
+  <!-- Text PRAHARI -->
+  <text x="256" y="475" text-anchor="middle" fill="#f8fafc" font-family="monospace, sans-serif" font-weight="900" font-size="34" letter-spacing="6">PRAHARI</text>
+</svg>

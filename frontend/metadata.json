@@ -1,0 +1,6 @@
+{
+  "name": "PRAHARI Traffic-Police Robot Command Center",
+  "description": "Autonomous & RC-Assisted Traffic-Police Robot Control Platform & Simulator for Team NETRA Robotics (Smart India Hackathon)",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

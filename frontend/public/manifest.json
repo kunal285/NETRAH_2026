@@ -1,0 +1,37 @@
+{
+  "name": "PRAHARI Traffic-Police Robot Command Center",
+  "short_name": "PRAHARI",
+  "description": "Autonomous & RC-Assisted Traffic-Police Robot Control Platform & Simulator for Team NETRA Robotics (Smart India Hackathon)",
+  "start_url": "/",
+  "id": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#020617",
+  "theme_color": "#0f172a",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["utilities", "productivity", "navigation"],
+  "shortcuts": [
+    {
+      "name": "Robot Control",
+      "url": "/#control",
+      "description": "Direct skid-steer teleoperation pad"
+    },
+    {
+      "name": "Live Vision Feed",
+      "url": "/#vision",
+      "description": "1080p optical camera HUD"
+    },
+    {
+      "name": "AI Perception",
+      "url": "/#ai",
+      "description": "Ambulance radar & ANPR"
+    }
+  ]
+}

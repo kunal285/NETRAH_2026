@@ -1,0 +1,13 @@
+{
+  "/page": "app/page.js",
+  "/login/page": "app/login/page.js",
+  "/landing/page": "app/landing/page.js",
+  "/vision/page": "app/vision/page.js",
+  "/settings/page": "app/settings/page.js",
+  "/system/page": "app/system/page.js",
+  "/configuration/page": "app/configuration/page.js",
+  "/sensors/page": "app/sensors/page.js",
+  "/telemetry/page": "app/telemetry/page.js",
+  "/ai/page": "app/ai/page.js",
+  "/detections/page": "app/detections/page.js"
+}
