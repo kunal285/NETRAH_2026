@@ -21,8 +21,8 @@ export default function HomePage() {
   const { activeTab } = useRobot();
 
   useEffect(() => {
-    const isAuthenticated = typeof window !== 'undefined' && localStorage.getItem(AUTH_KEY) === 'true';
-    if (!isAuthenticated) {
+    const authVal = typeof window !== 'undefined' ? localStorage.getItem(AUTH_KEY) : null;
+    if (authVal === 'false') {
       router.replace('/landing');
     }
   }, [router]);

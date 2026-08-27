@@ -1,0 +1,17 @@
+[Unit]
+Description=PRAHARI Raspberry Pi 5 Hardware Telemetry & Control Daemon
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/prahari-traffic-police-robot-command-center/rpi5-bridge
+ExecStart=/usr/bin/python3 rpi5_bridge.py
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

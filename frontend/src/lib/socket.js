@@ -10,10 +10,19 @@ class SocketClient {
     if (typeof window === 'undefined') return null;
     if (this.socket) return this.socket;
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
+    let defaultUrl = '';
+    if (typeof window !== 'undefined') {
+      // If running on port 3000 (Next.js default dev port), default socket target to port 4000 (backend)
+      if (window.location.port === '3000') {
+        defaultUrl = `${window.location.protocol}//${window.location.hostname}:4000`;
+      } else {
+        defaultUrl = window.location.origin;
+      }
+    }
 
-    this.socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || window.location.origin, {
+    const targetUrl = process.env.NEXT_PUBLIC_SOCKET_URL || defaultUrl;
+
+    this.socket = io(targetUrl, {
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 10,
       reconnectionDelay: 1000,

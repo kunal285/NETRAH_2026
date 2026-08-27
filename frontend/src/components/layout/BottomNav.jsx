@@ -7,7 +7,7 @@ import { useRobot } from '../../context/RobotContext';
 import {
   LayoutDashboard,
   Gamepad2,
-  Eye,
+  Camera,
   BrainCircuit,
   Menu,
 } from 'lucide-react';
@@ -21,7 +21,7 @@ export const BottomNav = () => {
   const mainTabs = [
     { id: 'dashboard', href: '/', label: 'Home', icon: LayoutDashboard },
     { id: 'control', href: '/control', label: 'Control', icon: Gamepad2 },
-    { id: 'vision', href: '/vision', label: 'Vision', icon: Eye },
+    { id: 'vision', href: '/vision', label: 'Camera', icon: Camera },
     { id: 'ai', href: '/ai', label: 'AI Suite', icon: BrainCircuit },
   ];
 
@@ -29,7 +29,7 @@ export const BottomNav = () => {
     <>
       <nav
         id="mobile-bottom-nav"
-        className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-950/95 backdrop-blur-md border-t border-slate-800 px-3 py-2 flex items-center justify-around font-mono"
+        className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 px-3 py-2 flex items-center justify-around font-sans shadow-lg"
       >
         {mainTabs.map((tab) => {
           const Icon = tab.icon;
@@ -45,10 +45,10 @@ export const BottomNav = () => {
               href={tab.href}
               onClick={() => setActiveTab(tab.id)}
               className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition cursor-pointer ${
-                isActive ? 'text-sky-400 font-black' : 'text-slate-400 hover:text-slate-200'
+                isActive ? 'text-emerald-700 font-bold' : 'text-slate-500 hover:text-slate-900'
               }`}
             >
-              <Icon className={`w-5 h-5 ${isActive ? 'text-sky-400 scale-110' : 'text-slate-400'}`} />
+              <Icon className={`w-5 h-5 ${isActive ? 'text-emerald-600 scale-105' : 'text-slate-400'}`} />
               <span className="text-[10px] tracking-tight">{tab.label}</span>
             </Link>
           );
@@ -58,7 +58,7 @@ export const BottomNav = () => {
         <button
           id="bottom-nav-more"
           onClick={() => setIsMoreOpen(true)}
-          className="flex flex-col items-center gap-1 py-1 px-3 rounded-xl text-slate-400 hover:text-slate-200 cursor-pointer"
+          className="flex flex-col items-center gap-1 py-1 px-3 rounded-xl text-slate-500 hover:text-slate-900 cursor-pointer"
         >
           <Menu className="w-5 h-5" />
           <span className="text-[10px] tracking-tight">More</span>
@@ -69,4 +69,3 @@ export const BottomNav = () => {
     </>
   );
 };
-

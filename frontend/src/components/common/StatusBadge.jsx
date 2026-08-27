@@ -4,26 +4,26 @@ import React from 'react';
 
 export const StatusBadge = ({ label, variant = 'slate', pulse = false }) => {
   const styles = {
-    green: 'bg-emerald-950/80 text-emerald-300 border-emerald-800 shadow-emerald-950/50',
-    blue: 'bg-sky-950/80 text-sky-300 border-sky-800 shadow-sky-950/50',
-    amber: 'bg-amber-950/80 text-amber-300 border-amber-800 shadow-amber-950/50',
-    red: 'bg-rose-950/80 text-rose-300 border-rose-800 shadow-rose-950/50',
-    purple: 'bg-indigo-950/80 text-indigo-300 border-indigo-800 shadow-indigo-950/50',
-    slate: 'bg-slate-900 text-slate-300 border-slate-700 shadow-slate-950/50',
+    green: 'bg-emerald-50 text-emerald-700 border-emerald-200 shadow-xs',
+    blue: 'bg-sky-50 text-sky-700 border-sky-200 shadow-xs',
+    amber: 'bg-amber-50 text-amber-800 border-amber-200 shadow-xs',
+    red: 'bg-rose-50 text-rose-700 border-rose-200 shadow-xs',
+    purple: 'bg-indigo-50 text-indigo-700 border-indigo-200 shadow-xs',
+    slate: 'bg-slate-100 text-slate-700 border-slate-200 shadow-xs',
   };
 
   const dots = {
-    green: 'bg-emerald-400',
-    blue: 'bg-sky-400',
-    amber: 'bg-amber-400',
-    red: 'bg-rose-400',
-    purple: 'bg-indigo-400',
-    slate: 'bg-slate-400',
+    green: 'bg-emerald-600',
+    blue: 'bg-sky-600',
+    amber: 'bg-amber-600',
+    red: 'bg-rose-600',
+    purple: 'bg-indigo-600',
+    slate: 'bg-slate-500',
   };
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wider uppercase border shadow-sm font-mono whitespace-nowrap ${
+      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wide uppercase border whitespace-nowrap ${
         styles[variant] || styles.slate
       }`}
     >

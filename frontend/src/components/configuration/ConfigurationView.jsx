@@ -13,6 +13,7 @@ import {
   Battery,
   Layers,
   CheckCircle2,
+  Cpu,
 } from 'lucide-react';
 
 export const ConfigurationView = () => {
@@ -20,7 +21,6 @@ export const ConfigurationView = () => {
   const [form, setForm] = useState(settings);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // Sync state if external settings update
   React.useEffect(() => {
     setForm(settings);
   }, [settings]);
@@ -48,238 +48,159 @@ export const ConfigurationView = () => {
   };
 
   return (
-    <div id="configuration-view" className="space-y-6 max-w-5xl mx-auto font-mono">
+    <div id="configuration-view" className="space-y-6 max-w-5xl mx-auto font-sans">
       {/* Header */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+      <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-sky-600/20 border border-sky-500/40 flex items-center justify-center text-sky-400">
-            <Wrench className="w-4 h-4" />
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700">
+            <Wrench className="w-5 h-5" />
           </div>
           <div>
-            <div className="text-sm font-bold text-white">ROBOT PARAMETERS & HARDWARE SPECS</div>
-            <p className="text-[11px] text-slate-400">
+            <div className="text-sm font-bold text-slate-900 uppercase">ROBOT PARAMETERS & HARDWARE SPECS</div>
+            <p className="text-xs text-slate-500">
               Calibrate motor thresholds, obstacle detection safety limits, and battery interlocks.
             </p>
           </div>
         </div>
 
         {saveSuccess && (
-          <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-950 text-emerald-300 border border-emerald-800 rounded-lg text-xs font-bold">
-            <CheckCircle2 className="w-4 h-4" />
+          <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
             <span>Saved to EEPROM/Backend</span>
           </div>
         )}
       </div>
 
-      {/* Hardware Bill of Materials & Architecture Card */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-          <div className="flex items-center gap-2 font-bold text-white text-sm">
-            <Layers className="w-4 h-4 text-sky-400" />
-            <span>PRAHARI HARDWARE ARCHITECTURE (SIH NETRA ROBOTICS)</span>
+      {/* Hardware Architecture Card */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2 font-bold text-slate-900 text-sm">
+            <Layers className="w-4 h-4 text-emerald-600" />
+            <span>PRAHARI HARDWARE ARCHITECTURE (RASPBERRY PI 5 COMPUTING CORE)</span>
           </div>
-          <StatusBadge label="VERIFIED SPECIFICATION" variant="blue" />
+          <StatusBadge label="RPI 5 • BCM2712" variant="green" />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-          <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-1">
-            <div className="text-slate-500 text-[10px]">CHASSIS & DRIVE:</div>
-            <div className="text-white font-bold">4-Wheel Differential</div>
-            <div className="text-slate-400 text-[11px]">Skid-steer dual motor control</div>
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+            <div className="text-slate-400 text-[10px] uppercase font-bold">COMPUTE BRAIN</div>
+            <div className="text-slate-900 font-bold">Raspberry Pi 5 (8GB)</div>
+            <div className="text-slate-500 text-[11px]">Broadcom BCM2712 2.4GHz Quad-Core</div>
           </div>
 
-          <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-1">
-            <div className="text-slate-500 text-[10px]">MOTORS:</div>
-            <div className="text-white font-bold">2× MY1016 350W</div>
-            <div className="text-slate-400 text-[11px]">36V DC Brushed High-Torque</div>
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+            <div className="text-slate-400 text-[10px] uppercase font-bold">MOTORS & DRIVE</div>
+            <div className="text-slate-900 font-bold">2× MY1016 350W</div>
+            <div className="text-slate-500 text-[11px]">36V DC Brushed High-Torque</div>
           </div>
 
-          <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-1">
-            <div className="text-slate-500 text-[10px]">MOTOR DRIVERS:</div>
-            <div className="text-white font-bold">2× BTS7960 43A</div>
-            <div className="text-slate-400 text-[11px]">Dual High-Power H-Bridges</div>
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+            <div className="text-slate-400 text-[10px] uppercase font-bold">MOTOR DRIVERS</div>
+            <div className="text-slate-900 font-bold">2× BTS7960 43A</div>
+            <div className="text-slate-500 text-[11px]">RP1 Hardware PWM (GPIO 12/13/18/19)</div>
           </div>
 
-          <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-1">
-            <div className="text-slate-500 text-[10px]">ENERGY PACK:</div>
-            <div className="text-white font-bold">2× 36V 13Ah Li-ion</div>
-            <div className="text-slate-400 text-[11px]">936Wh combined capacity</div>
-          </div>
-
-          <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-1">
-            <div className="text-slate-500 text-[10px]">STEP-DOWN CONVERTER:</div>
-            <div className="text-white font-bold">LM2596 Buck Regulator</div>
-            <div className="text-slate-400 text-[11px]">36V → 5.0V Regulated Bus</div>
-          </div>
-
-          <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-1">
-            <div className="text-slate-500 text-[10px]">VISION SYSTEM:</div>
-            <div className="text-white font-bold">1080p Full HD Optical</div>
-            <div className="text-slate-400 text-[11px]">USB Host UVC / 120° FOV</div>
-          </div>
-
-          <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-1">
-            <div className="text-slate-500 text-[10px]">COLLISION RADAR:</div>
-            <div className="text-white font-bold">HC-SR04 Ultrasonic</div>
-            <div className="text-slate-400 text-[11px]">4.0m Front Detection Range</div>
-          </div>
-
-          <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-1">
-            <div className="text-slate-500 text-[10px]">MICROCONTROLLER:</div>
-            <div className="text-white font-bold">ESP32 Dual-Core</div>
-            <div className="text-slate-400 text-[11px]">240MHz / WiFi & ESP-NOW</div>
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+            <div className="text-slate-400 text-[10px] uppercase font-bold">BATTERY POWER</div>
+            <div className="text-slate-900 font-bold">36V 10S Li-ion</div>
+            <div className="text-slate-500 text-[11px]">10Ah Pack • 40A Inline Fuse</div>
           </div>
         </div>
       </div>
 
-      {/* Calibration Form */}
-      <form onSubmit={handleSave} className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Speed & Drive Limits */}
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm space-y-4">
-            <div className="flex items-center gap-2 font-bold text-white text-sm border-b border-slate-800 pb-2">
-              <Sliders className="w-4 h-4 text-sky-400" />
-              <span>DRIVE & THROTTLE LIMITS</span>
-            </div>
-
-            <div className="space-y-3 text-xs">
-              <div>
-                <div className="flex justify-between mb-1">
-                  <label className="text-slate-300">Default Patrol Speed (%)</label>
-                  <span className="text-sky-400 font-bold">{form.defaultSpeed}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="10"
-                  max="100"
-                  step="5"
-                  value={form.defaultSpeed}
-                  onChange={(e) => handleChange('defaultSpeed', parseInt(e.target.value, 10))}
-                  className="w-full h-2 bg-slate-800 rounded accent-sky-500"
-                />
-              </div>
-
-              <div>
-                <div className="flex justify-between mb-1">
-                  <label className="text-slate-300">Maximum Governed Speed Cap (%)</label>
-                  <span className="text-sky-400 font-bold">{form.maxSpeed}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="30"
-                  max="100"
-                  step="5"
-                  value={form.maxSpeed}
-                  onChange={(e) => handleChange('maxSpeed', parseInt(e.target.value, 10))}
-                  className="w-full h-2 bg-slate-800 rounded accent-sky-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-300 mb-1">Telemetry Broadcast Interval (ms)</label>
-                <input
-                  type="number"
-                  min="100"
-                  max="2000"
-                  step="50"
-                  value={form.telemetryIntervalMs}
-                  onChange={(e) => handleChange('telemetryIntervalMs', parseInt(e.target.value, 10))}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-white font-bold"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Safety & Thresholds */}
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm space-y-4">
-            <div className="flex items-center gap-2 font-bold text-white text-sm border-b border-slate-800 pb-2">
-              <Shield className="w-4 h-4 text-rose-400" />
-              <span>SAFETY INTERLOCK THRESHOLDS</span>
-            </div>
-
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="block text-slate-300 mb-1">
-                  Emergency Stop Obstacle Distance (meters)
-                </label>
-                <input
-                  type="number"
-                  min="0.10"
-                  max="1.50"
-                  step="0.05"
-                  value={form.emergencyStopDistance}
-                  onChange={(e) => handleChange('emergencyStopDistance', parseFloat(e.target.value))}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-white font-bold"
-                />
-                <span className="text-[10px] text-slate-500">
-                  Motors instantly lock if obstacle is within this distance.
-                </span>
-              </div>
-
-              <div>
-                <label className="block text-slate-300 mb-1">
-                  Obstacle Warning Distance (meters)
-                </label>
-                <input
-                  type="number"
-                  min="0.30"
-                  max="3.00"
-                  step="0.10"
-                  value={form.obstacleWarningDistance}
-                  onChange={(e) => handleChange('obstacleWarningDistance', parseFloat(e.target.value))}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-white font-bold"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-300 mb-1">
-                  Motor Overcurrent Cutoff Limit (Amperes)
-                </label>
-                <input
-                  type="number"
-                  min="10"
-                  max="35"
-                  step="1"
-                  value={form.maxMotorCurrent}
-                  onChange={(e) => handleChange('maxMotorCurrent', parseFloat(e.target.value))}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-white font-bold"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-300 mb-1">
-                  Critical Battery Voltage Cutoff (Volts)
-                </label>
-                <input
-                  type="number"
-                  min="28"
-                  max="35"
-                  step="0.5"
-                  value={form.criticalBatteryVoltage}
-                  onChange={(e) => handleChange('criticalBatteryVoltage', parseFloat(e.target.value))}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-white font-bold"
-                />
-              </div>
-            </div>
+      {/* Parameters Form */}
+      <form onSubmit={handleSave} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-6">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2 font-bold text-slate-900 text-sm">
+            <Sliders className="w-4 h-4 text-emerald-600" />
+            <span>CALIBRATION PARAMETERS</span>
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex items-center justify-end gap-3 pt-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
+          {/* Obstacle Distance Cutoff */}
+          <div className="space-y-2">
+            <label className="block font-bold text-slate-800">
+              Front Obstacle E-Stop Distance: <strong className="text-emerald-700 font-mono">{form.emergencyStopDistance || 0.4} m</strong>
+            </label>
+            <input
+              type="range"
+              min="0.10"
+              max="1.50"
+              step="0.05"
+              value={form.emergencyStopDistance || 0.4}
+              onChange={(e) => handleChange('emergencyStopDistance', parseFloat(e.target.value))}
+              className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+            />
+            <span className="text-[11px] text-slate-400">Triggers immediate PWM cut if obstacle distance falls below cutoff</span>
+          </div>
+
+          {/* Motor Current Limit */}
+          <div className="space-y-2">
+            <label className="block font-bold text-slate-800">
+              Max Motor Current Limit: <strong className="text-emerald-700 font-mono">{form.maxMotorCurrent || 22} A</strong>
+            </label>
+            <input
+              type="range"
+              min="5"
+              max="35"
+              step="1"
+              value={form.maxMotorCurrent || 22}
+              onChange={(e) => handleChange('maxMotorCurrent', parseInt(e.target.value, 10))}
+              className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+            />
+            <span className="text-[11px] text-slate-400">Protects BTS7960 H-Bridges from continuous stall overcurrent</span>
+          </div>
+
+          {/* Speed Limit */}
+          <div className="space-y-2">
+            <label className="block font-bold text-slate-800">
+              Max Drive Speed Cap: <strong className="text-emerald-700 font-mono">{form.maxSpeed || 90}% PWM</strong>
+            </label>
+            <input
+              type="range"
+              min="20"
+              max="100"
+              step="5"
+              value={form.maxSpeed || 90}
+              onChange={(e) => handleChange('maxSpeed', parseInt(e.target.value, 10))}
+              className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+            />
+            <span className="text-[11px] text-slate-400">Governs maximum throttle permitted during manual or web teleoperation</span>
+          </div>
+
+          {/* Low Battery Voltage */}
+          <div className="space-y-2">
+            <label className="block font-bold text-slate-800">
+              Low Battery Warning Cutoff: <strong className="text-emerald-700 font-mono">{form.lowBatteryVoltage || 31.0} V</strong>
+            </label>
+            <input
+              type="range"
+              min="28.0"
+              max="35.0"
+              step="0.5"
+              value={form.lowBatteryVoltage || 31.0}
+              onChange={(e) => handleChange('lowBatteryVoltage', parseFloat(e.target.value))}
+              className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+            />
+            <span className="text-[11px] text-slate-400">Warns operator to return robot to charging bay before BMS cutoff</span>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
           <button
             type="button"
-            id="btn-config-reset"
             onClick={handleReset}
-            className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+            className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs flex items-center gap-1.5 cursor-pointer transition"
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            <span>Reset Factory Defaults</span>
+            <span>Reset Defaults</span>
           </button>
-
           <button
             type="submit"
-            id="btn-config-save"
-            className="px-6 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white border border-sky-400 text-xs font-bold flex items-center gap-1.5 transition shadow-lg cursor-pointer"
+            id="btn-save-config"
+            className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs cursor-pointer transition"
           >
             <Save className="w-3.5 h-3.5" />
             <span>Save Configuration</span>

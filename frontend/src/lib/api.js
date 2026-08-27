@@ -122,6 +122,54 @@ export const api = {
     return res.json();
   },
 
+  async processAiFrame(payload) {
+    const res = await fetch(`${API_BASE}/ai/process-frame`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error('Failed to process camera frame');
+    return res.json();
+  },
+
+  async getAiStatus() {
+    const res = await fetch(`${API_BASE}/ai/status`);
+    if (!res.ok) throw new Error('Failed to fetch AI status');
+    return res.json();
+  },
+
+  async getAiEvents(params = {}) {
+    const query = new URLSearchParams();
+    if (params.type) query.append('type', params.type);
+    if (params.search) query.append('search', params.search);
+    if (params.limit) query.append('limit', String(params.limit));
+    if (params.page) query.append('page', String(params.page));
+    const res = await fetch(`${API_BASE}/ai/events?${query.toString()}`);
+    if (!res.ok) throw new Error('Failed to fetch AI events');
+    return res.json();
+  },
+
+  async clearAiEvents() {
+    const res = await fetch(`${API_BASE}/ai/events`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Failed to clear AI events');
+    return res.json();
+  },
+
+  async getAnprList(params = {}) {
+    const query = new URLSearchParams();
+    if (params.search) query.append('search', params.search);
+    if (params.state) query.append('state', params.state);
+    const res = await fetch(`${API_BASE}/ai/anpr?${query.toString()}`);
+    if (!res.ok) throw new Error('Failed to fetch ANPR list');
+    return res.json();
+  },
+
+  async getAiAnalytics() {
+    const res = await fetch(`${API_BASE}/ai/analytics`);
+    if (!res.ok) throw new Error('Failed to fetch AI analytics');
+    return res.json();
+  },
+
   // Settings & Parameters
   async getSettings() {
     const res = await fetch(`${API_BASE}/settings`);

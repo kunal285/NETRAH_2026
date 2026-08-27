@@ -35,17 +35,17 @@ export const MoreMenuModal = ({ isOpen, onClose }) => {
   return (
     <div
       id="more-menu-modal"
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in font-mono"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/40 backdrop-blur-xs animate-fade-in font-sans"
     >
-      <div className="bg-slate-900 border-t sm:border border-slate-800 rounded-t-3xl sm:rounded-2xl w-full max-w-lg p-5 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-          <div className="text-sm font-bold text-white uppercase tracking-wider">
-            ADDITIONAL COMMAND MODULES
+      <div className="bg-white border-t sm:border border-slate-200 rounded-t-3xl sm:rounded-2xl w-full max-w-lg p-5 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+            ROBOTICS MODULES
           </div>
           <button
             id="btn-close-more-menu"
             onClick={onClose}
-            className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
+            className="p-1.5 rounded-lg bg-slate-100 text-slate-500 hover:text-slate-900 cursor-pointer transition"
           >
             <X className="w-4 h-4" />
           </button>
@@ -63,16 +63,16 @@ export const MoreMenuModal = ({ isOpen, onClose }) => {
                 onClick={() => handleSelect(item.id)}
                 className={`p-3.5 rounded-xl border text-left flex items-start gap-3 transition cursor-pointer ${
                   isActive
-                    ? 'bg-sky-950/80 border-sky-500 text-sky-300 shadow-md'
-                    : 'bg-slate-950/60 border-slate-800 text-slate-300 hover:bg-slate-800/80'
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-900 shadow-xs'
+                    : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
                 }`}
               >
-                <div className={`p-2 rounded-lg ${isActive ? 'bg-sky-600/30 text-sky-400' : 'bg-slate-900 text-slate-400'}`}>
+                <div className={`p-2 rounded-lg ${isActive ? 'bg-emerald-600 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}>
                   <Icon className="w-5 h-5" />
                 </div>
                 <div>
-                  <div className="text-xs font-bold text-white">{item.label}</div>
-                  <p className="text-[11px] text-slate-400 mt-0.5">{item.desc}</p>
+                  <div className="text-xs font-bold text-slate-900">{item.label}</div>
+                  <p className="text-[11px] text-slate-500 mt-0.5">{item.desc}</p>
                 </div>
               </Link>
             );
@@ -82,4 +82,3 @@ export const MoreMenuModal = ({ isOpen, onClose }) => {
     </div>
   );
 };
-

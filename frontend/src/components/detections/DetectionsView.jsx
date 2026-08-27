@@ -7,7 +7,6 @@ import { StatusBadge } from '../common/StatusBadge';
 import {
   FileSearch,
   Search,
-  Filter,
   Trash2,
   RefreshCw,
   FileText,
@@ -69,177 +68,171 @@ export const DetectionsView = () => {
   const getIcon = (type) => {
     switch (type) {
       case 'ambulance':
-        return <Siren className="w-4 h-4 text-rose-400" />;
+        return <Siren className="w-4 h-4 text-rose-600" />;
       case 'anpr':
-        return <FileText className="w-4 h-4 text-sky-400" />;
+        return <FileText className="w-4 h-4 text-emerald-600" />;
       case 'vehicle':
-        return <Car className="w-4 h-4 text-amber-400" />;
+        return <Car className="w-4 h-4 text-amber-600" />;
       case 'face':
-        return <UserCheck className="w-4 h-4 text-emerald-400" />;
+        return <UserCheck className="w-4 h-4 text-purple-600" />;
       default:
-        return <FileSearch className="w-4 h-4 text-slate-400" />;
+        return <FileSearch className="w-4 h-4 text-slate-500" />;
     }
   };
 
   return (
-    <div id="detections-view" className="space-y-6 max-w-6xl mx-auto font-mono">
+    <div id="detections-view" className="space-y-6 max-w-6xl mx-auto font-sans">
       {/* Header Info & Stats Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-3.5 space-y-1">
-          <div className="text-xs text-slate-400">Total Detections</div>
-          <div className="text-xl font-black text-white">{stats.total}</div>
-          <div className="text-[10px] text-slate-500">Indexed In Memory</div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-1">
+          <div className="text-xs text-slate-500 font-semibold uppercase">Total Detections</div>
+          <div className="text-xl font-black text-slate-900 font-mono">{stats.total}</div>
+          <div className="text-[11px] text-slate-400">Indexed Records</div>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-3.5 space-y-1">
-          <div className="text-xs text-slate-400">ANPR License Plates</div>
-          <div className="text-xl font-black text-sky-400">{stats.anpr}</div>
-          <div className="text-[10px] text-slate-500">OCR OCR-94.2% avg</div>
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-1">
+          <div className="text-xs text-slate-500 font-semibold uppercase">ANPR Plates</div>
+          <div className="text-xl font-black text-emerald-700 font-mono">{stats.anpr}</div>
+          <div className="text-[11px] text-slate-400">HSRP Segmented</div>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-3.5 space-y-1">
-          <div className="text-xs text-slate-400">Ambulance Alerts</div>
-          <div className="text-xl font-black text-rose-400">{stats.ambulance}</div>
-          <div className="text-[10px] text-slate-500">Green Corridors</div>
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-1">
+          <div className="text-xs text-slate-500 font-semibold uppercase">Ambulance Triggers</div>
+          <div className="text-xl font-black text-rose-600 font-mono">{stats.ambulance}</div>
+          <div className="text-[11px] text-slate-400">Emergency Corridors</div>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-3.5 space-y-1">
-          <div className="text-xs text-slate-400">Vehicles & Walkers</div>
-          <div className="text-xl font-black text-amber-400">{stats.vehicle + stats.face}</div>
-          <div className="text-[10px] text-slate-500">Crosswalk / Lane Traffic</div>
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-1">
+          <div className="text-xs text-slate-500 font-semibold uppercase">Vehicles Classified</div>
+          <div className="text-xl font-black text-slate-900 font-mono">{stats.vehicle}</div>
+          <div className="text-[11px] text-slate-400">IoU Tracked</div>
         </div>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-        <div className="relative flex-1">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            id="input-search-detections"
-            type="text"
-            placeholder="Search by license plate (e.g. MH12), vehicle type, state..."
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              setPage(1);
-            }}
-            className="w-full pl-9 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-sky-500"
-          />
+      {/* Main Table Container */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700">
+              <FileSearch className="w-4 h-4" />
+            </div>
+            <div className="text-sm font-bold text-slate-900">PERCEPTION DETECTION DATABASE</div>
+          </div>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <button
+              id="btn-refresh-detections"
+              onClick={fetchDetections}
+              className="p-2 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 cursor-pointer"
+              title="Refresh"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+            <button
+              id="btn-clear-detections"
+              onClick={handleClear}
+              className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Clear Log</span>
+            </button>
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
+        {/* Filter Controls */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="relative w-full sm:w-72">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search detected object, plate..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+            />
+          </div>
+
+          <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 scrollbar-none">
             {['all', 'anpr', 'ambulance', 'vehicle', 'face'].map((t) => (
               <button
                 key={t}
-                onClick={() => {
-                  setTypeFilter(t);
-                  setPage(1);
-                }}
-                className={`px-2.5 py-1 rounded text-xs font-bold uppercase transition cursor-pointer ${
+                onClick={() => { setTypeFilter(t); setPage(1); }}
+                className={`px-3 py-1 rounded-lg text-[11px] font-semibold uppercase transition cursor-pointer ${
                   typeFilter === t
-                    ? 'bg-sky-600 text-white'
-                    : 'text-slate-400 hover:text-slate-200'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-slate-50 text-slate-600 hover:text-slate-900 border border-slate-200'
                 }`}
               >
                 {t}
               </button>
             ))}
           </div>
-
-          <button
-            id="btn-refresh-detections"
-            onClick={fetchDetections}
-            className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer"
-            title="Refresh"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
-
-          <button
-            id="btn-clear-detections"
-            onClick={handleClear}
-            className="p-2 rounded-lg bg-slate-800 hover:bg-rose-950 text-slate-300 hover:text-rose-300 transition cursor-pointer"
-            title="Clear all logs"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-
-      {/* Detections List */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
-        <div className="divide-y divide-slate-800">
-          {detections.length === 0 ? (
-            <div className="p-12 text-center text-slate-500 text-xs">
-              No detection records found matching current query.
-            </div>
-          ) : (
-            detections.map((det) => (
-              <div
-                key={det.id}
-                className="p-4 hover:bg-slate-800/40 transition flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs"
-              >
-                <div className="flex items-start gap-3">
-                  <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 shrink-0 mt-0.5">
-                    {getIcon(det.type)}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-white text-sm">{det.result}</span>
-                      <StatusBadge
-                        label={det.type}
-                        variant={
-                          det.type === 'ambulance'
-                            ? 'red'
-                            : det.type === 'anpr'
-                            ? 'blue'
-                            : det.type === 'vehicle'
-                            ? 'amber'
-                            : 'green'
-                        }
-                      />
-                    </div>
-                    <div className="text-slate-400 text-[11px] mt-1 flex flex-wrap items-center gap-3">
-                      <span>Camera: {det.camera}</span>
-                      <span>Confidence: {Math.round(det.confidence * 100)}%</span>
-                      {det.details?.plateState && (
-                        <span>State: {det.details.plateState}</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="text-[11px] text-slate-500 whitespace-nowrap self-end sm:self-center">
-                  {new Date(det.timestamp).toLocaleTimeString()} • {new Date(det.timestamp).toLocaleDateString()}
-                </div>
-              </div>
-            ))
-          )}
         </div>
 
-        {/* Pagination Footer */}
-        <div className="p-3 bg-slate-950 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
-          <div>
-            Showing Page <span className="text-white font-bold">{page}</span> of {totalPages} ({total} entries)
-          </div>
+        {/* Table */}
+        <div className="overflow-x-auto rounded-xl border border-slate-200">
+          <table className="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+                <th className="py-2.5 px-3">Type</th>
+                <th className="py-2.5 px-3">Detection Info</th>
+                <th className="py-2.5 px-3">Confidence</th>
+                <th className="py-2.5 px-3">Source</th>
+                <th className="py-2.5 px-3">Timestamp</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {detections.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="text-center py-12 text-slate-400 text-xs">
+                    No detections match current filter.
+                  </td>
+                </tr>
+              ) : (
+                detections.map((d, i) => (
+                  <tr key={d._id || i} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="py-3 px-3">
+                      <div className="flex items-center gap-2">
+                        {getIcon(d.type)}
+                        <span className="font-bold text-slate-900 uppercase text-[11px]">{d.type}</span>
+                      </div>
+                    </td>
+                    <td className="py-3 px-3 font-semibold text-slate-800">
+                      {d.metadata?.plateNumber || d.label || d.type}
+                    </td>
+                    <td className="py-3 px-3 font-mono font-bold text-emerald-700">
+                      {Math.round((d.confidence || 0.9) * 100)}%
+                    </td>
+                    <td className="py-3 px-3 text-slate-500 text-[11px]">
+                      {d.cameraSource || 'Optical 1080p'}
+                    </td>
+                    <td className="py-3 px-3 text-slate-400 font-mono text-[11px]">
+                      {d.timestamp ? new Date(d.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString()}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
 
-          <div className="flex items-center gap-2">
+        {/* Pagination */}
+        <div className="flex items-center justify-between text-xs text-slate-500 pt-2">
+          <span>Page {page} of {totalPages} ({total} total)</span>
+          <div className="flex items-center gap-1">
             <button
-              id="btn-prev-page"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
-              onClick={() => setPage(page - 1)}
-              className="p-1.5 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-slate-800 text-white cursor-pointer"
+              className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 disabled:opacity-40"
             >
-              <ChevronLeft className="w-4 h-4" />
+              <ChevronLeft className="w-3.5 h-3.5" />
             </button>
             <button
-              id="btn-next-page"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
-              onClick={() => setPage(page + 1)}
-              className="p-1.5 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-slate-800 text-white cursor-pointer"
+              className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 disabled:opacity-40"
             >
-              <ChevronRight className="w-4 h-4" />
+              <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>

@@ -1,4 +1,21 @@
 @import "tailwindcss";
+@source "../src";
+@source "./";
+@source "../";
+
+:root {
+  --primary-green: #16a34a;
+  --dark-green: #15803d;
+  --light-green: #dcfce7;
+  --very-light-green: #f0fdf4;
+  --bg-color: #f8fafc;
+  --card-bg: #ffffff;
+  --dark-text: #111827;
+  --secondary-text: #64748b;
+  --border-color: #e5e7eb;
+  --warning: #f59e0b;
+  --critical: #dc2626;
+}
 
 html,
 body {
@@ -7,24 +24,65 @@ body {
   min-height: 100%;
   margin: 0;
   padding: 0;
-  background-color: #020617;
-  color: #f8fafc;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  background-color: #f8fafc;
+  color: #111827;
+  font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Custom smooth scrollbars */
+/* Binary Botz Inspired Clean Card Utility */
+.bb-card {
+  background-color: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
+}
+
+.bb-card:hover {
+  border-color: #d1d5db;
+}
+
+/* Green Primary Button */
+.bb-btn-primary {
+  background-color: #16a34a;
+  color: #ffffff;
+  font-weight: 600;
+  border-radius: 10px;
+  transition: all 0.15s ease-in-out;
+}
+
+.bb-btn-primary:hover {
+  background-color: #15803d;
+  box-shadow: 0 4px 6px -1px rgba(22, 163, 74, 0.2);
+}
+
+/* Secondary Button */
+.bb-btn-secondary {
+  background-color: #ffffff;
+  color: #16a34a;
+  border: 1px solid #16a34a;
+  font-weight: 600;
+  border-radius: 10px;
+  transition: all 0.15s ease-in-out;
+}
+
+.bb-btn-secondary:hover {
+  background-color: #f0fdf4;
+}
+
+/* Custom smooth subtle scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #0f172a;
+  background: #f1f5f9;
 }
 ::-webkit-scrollbar-thumb {
-  background: #334155;
-  border-radius: 3px;
+  background: #cbd5e1;
+  border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+  background: #94a3b8;
 }

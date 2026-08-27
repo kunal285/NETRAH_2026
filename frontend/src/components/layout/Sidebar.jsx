@@ -7,7 +7,7 @@ import { useRobot } from '../../context/RobotContext';
 import {
   LayoutDashboard,
   Gamepad2,
-  Eye,
+  Camera,
   BrainCircuit,
   FileSearch,
   Activity,
@@ -15,6 +15,7 @@ import {
   Wrench,
   Server,
   Settings,
+  ShieldCheck,
 } from 'lucide-react';
 
 export const Sidebar = () => {
@@ -23,21 +24,21 @@ export const Sidebar = () => {
 
   const navItems = [
     { id: 'dashboard', href: '/', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'control', href: '/control', label: 'Robot Control', icon: Gamepad2 },
-    { id: 'vision', href: '/vision', label: 'Vision Stream', icon: Eye },
-    { id: 'ai', href: '/ai', label: 'AI Suite & ANPR', icon: BrainCircuit },
+    { id: 'control', href: '/control', label: 'Live Control', icon: Gamepad2 },
+    { id: 'vision', href: '/vision', label: 'Camera Stream', icon: Camera },
+    { id: 'ai', href: '/ai', label: 'AI Perception & ANPR', icon: BrainCircuit },
     { id: 'detections', href: '/detections', label: 'Detection Logs', icon: FileSearch },
     { id: 'telemetry', href: '/telemetry', label: 'Telemetry & Graphs', icon: Activity },
-    { id: 'sensors', href: '/sensors', label: 'Sensor Array', icon: Cpu },
-    { id: 'configuration', href: '/configuration', label: 'Parameters / Specs', icon: Wrench },
+    { id: 'sensors', href: '/sensors', label: 'Sensor Dashboard', icon: Cpu },
+    { id: 'configuration', href: '/configuration', label: 'Robot Health & Specs', icon: Wrench },
     { id: 'system', href: '/system', label: 'System Diagnostics', icon: Server },
     { id: 'settings', href: '/settings', label: 'Hardware HAL', icon: Settings },
   ];
 
   return (
-    <aside className="hidden lg:flex flex-col w-64 bg-slate-900/95 border-r border-slate-800 p-4 font-mono select-none">
-      <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider px-3 mb-2">
-        COMMAND CONSOLE
+    <aside className="hidden lg:flex flex-col w-64 bg-white border-r border-slate-200 p-4 font-sans select-none shadow-2xs">
+      <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-2">
+        ROBOTICS CONSOLE
       </div>
 
       <nav className="space-y-1 flex-1">
@@ -54,28 +55,33 @@ export const Sidebar = () => {
               id={`sidebar-nav-${item.id}`}
               href={item.href}
               onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer text-left ${
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer text-left ${
                 isActive
-                  ? 'bg-sky-600/20 text-sky-400 border border-sky-500/30 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200/80 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
               }`}
             >
-              <Icon className={`w-4 h-4 ${isActive ? 'text-sky-400' : 'text-slate-400'}`} />
+              <Icon className={`w-4 h-4 ${isActive ? 'text-emerald-600' : 'text-slate-400'}`} />
               <span>{item.label}</span>
             </Link>
           );
         })}
       </nav>
 
-      {/* SIH Hackathon NETRA Footer Badge */}
-      <div className="pt-4 border-t border-slate-800/80">
-        <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800/80 text-[10px] text-slate-400 space-y-1">
-          <div className="font-bold text-slate-200">SIH 2024 NETRA</div>
-          <div>Dual 36V 350W MY1016</div>
-          <div className="text-emerald-400">● BTS7960 Driver Ready</div>
+      {/* Raspberry Pi 5 Engineering Specs Card */}
+      <div className="pt-4 border-t border-slate-100">
+        <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 text-[11px] text-slate-500 space-y-1.5">
+          <div className="flex items-center justify-between font-bold text-slate-800">
+            <span>Raspberry Pi 5 (8GB)</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">ARM64</span>
+          </div>
+          <div className="text-[10px]">Dual 36V 350W MY1016 • RP1 I/O</div>
+          <div className="flex items-center gap-1.5 text-emerald-600 font-medium text-[10px]">
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span>BTS7960 Driver Online</span>
+          </div>
         </div>
       </div>
     </aside>
   );
 };
-

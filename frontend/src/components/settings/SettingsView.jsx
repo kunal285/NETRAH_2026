@@ -6,21 +6,16 @@ import { StatusBadge } from '../common/StatusBadge';
 import {
   Settings,
   Cpu,
-  Radio,
   Sliders,
   CheckCircle2,
-  AlertTriangle,
-  RotateCcw,
   Sparkles,
-  Shield,
-  Zap,
 } from 'lucide-react';
 
 export const SettingsView = () => {
   const { triggerScenario, resetSafety } = useRobot();
-  const [hardwareMode, setHardwareMode] = useState('simulator');
-  const [serialPort, setSerialPort] = useState('/dev/ttyUSB0');
-  const [baudRate, setBaudRate] = useState('115200');
+  const [hardwareMode, setHardwareMode] = useState('rpi5_lgpio');
+  const [serialPort, setSerialPort] = useState('/dev/serial0');
+  const [baudRate, setBaudRate] = useState('9600');
   const [officerId, setOfficerId] = useState('NETRA-OP-01');
   const [stationName, setStationName] = useState('SIH Smart Traffic Command Cell');
   const [savedNotice, setSavedNotice] = useState(false);
@@ -32,40 +27,40 @@ export const SettingsView = () => {
   };
 
   return (
-    <div id="settings-view" className="space-y-6 max-w-5xl mx-auto font-mono">
+    <div id="settings-view" className="space-y-6 max-w-5xl mx-auto font-sans">
       {/* Header */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+      <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-sky-600/20 border border-sky-500/40 flex items-center justify-center text-sky-400">
-            <Settings className="w-4 h-4" />
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700">
+            <Settings className="w-5 h-5" />
           </div>
           <div>
-            <div className="text-sm font-bold text-white">PLATFORM SETTINGS & HARDWARE BRIDGE</div>
-            <p className="text-[11px] text-slate-400">
-              Hardware abstraction layer, simulator environment triggers, and deployment config.
+            <div className="text-sm font-bold text-slate-900 uppercase">PLATFORM SETTINGS & RASPBERRY PI 5 HAL</div>
+            <p className="text-xs text-slate-500">
+              Hardware abstraction layer, RP1 GPIO bridge, and simulator test bench.
             </p>
           </div>
         </div>
 
         {savedNotice && (
-          <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-950 text-emerald-300 border border-emerald-800 rounded-lg text-xs font-bold">
-            <CheckCircle2 className="w-4 h-4" />
+          <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
             <span>Preferences Updated</span>
           </div>
         )}
       </div>
 
-      {/* Simulator Quick Scenarios Test Bench */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-          <div className="flex items-center gap-2 font-bold text-white text-sm">
-            <Sparkles className="w-4 h-4 text-sky-400" />
+      {/* Simulator Scenario Bench */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2 font-bold text-slate-900 text-sm">
+            <Sparkles className="w-4 h-4 text-emerald-600" />
             <span>PRAHARI ROBOT SIMULATION SCENARIO BENCH</span>
           </div>
           <StatusBadge label="MOCK ROBOT ENGINE" variant="purple" />
         </div>
 
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-slate-500 leading-relaxed">
           Trigger simulated hardware edge cases to evaluate frontend and backend safety reaction times.
         </p>
 
@@ -73,172 +68,104 @@ export const SettingsView = () => {
           <button
             id="btn-scen-clear"
             onClick={() => triggerScenario('clear')}
-            className="p-3 rounded-xl bg-slate-950 hover:bg-slate-800 text-slate-200 border border-slate-800 transition cursor-pointer text-left space-y-1"
+            className="p-3.5 rounded-xl bg-slate-50 hover:bg-emerald-50 text-slate-800 border border-slate-200 transition cursor-pointer text-left space-y-1"
           >
-            <div className="font-bold text-emerald-400">1. Normal Patrol</div>
-            <div className="text-[10px] text-slate-400">Full 36V battery, clear roadway (2.5m)</div>
+            <div className="font-bold text-emerald-700">1. Normal Patrol</div>
+            <div className="text-[11px] text-slate-500">Full 36V battery, clear roadway (2.5m)</div>
           </button>
 
           <button
             id="btn-scen-obstacle"
             onClick={() => triggerScenario('obstacle_close')}
-            className="p-3 rounded-xl bg-slate-950 hover:bg-slate-800 text-slate-200 border border-slate-800 transition cursor-pointer text-left space-y-1"
+            className="p-3.5 rounded-xl bg-slate-50 hover:bg-rose-50 text-slate-800 border border-slate-200 transition cursor-pointer text-left space-y-1"
           >
-            <div className="font-bold text-rose-400">2. Emergency Obstacle</div>
-            <div className="text-[10px] text-slate-400">Vehicle / object at 0.25m distance</div>
+            <div className="font-bold text-rose-700">2. Emergency Obstacle</div>
+            <div className="text-[11px] text-slate-500">Vehicle / object at 0.25m distance</div>
           </button>
 
           <button
             id="btn-scen-lowbatt"
             onClick={() => triggerScenario('low_battery')}
-            className="p-3 rounded-xl bg-slate-950 hover:bg-slate-800 text-slate-200 border border-slate-800 transition cursor-pointer text-left space-y-1"
+            className="p-3.5 rounded-xl bg-slate-50 hover:bg-amber-50 text-slate-800 border border-slate-200 transition cursor-pointer text-left space-y-1"
           >
-            <div className="font-bold text-amber-400">3. Low Battery</div>
-            <div className="text-[10px] text-slate-400">Voltage sags to 31.5V (15% SoC)</div>
+            <div className="font-bold text-amber-800">3. Low Battery</div>
+            <div className="text-[11px] text-slate-500">Voltage sags to 31.5V (15% SoC)</div>
           </button>
 
           <button
             id="btn-scen-overcurrent"
-            onClick={() => triggerScenario('overcurrent')}
-            className="p-3 rounded-xl bg-slate-950 hover:bg-slate-800 text-slate-200 border border-slate-800 transition cursor-pointer text-left space-y-1"
+            onClick={() => triggerScenario('motor_stall')}
+            className="p-3.5 rounded-xl bg-slate-50 hover:bg-rose-50 text-slate-800 border border-slate-200 transition cursor-pointer text-left space-y-1"
           >
-            <div className="font-bold text-indigo-400">4. Motor Stall Overcurrent</div>
-            <div className="text-[10px] text-slate-400">Spikes to 26A draw to test cutoff</div>
+            <div className="font-bold text-rose-700">4. Motor Stall</div>
+            <div className="text-[11px] text-slate-500">Current spikes to 22.4A (Trip)</div>
           </button>
         </div>
       </div>
 
-      {/* Hardware Adapter & ESP32 Bridge Configuration */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-          <div className="flex items-center gap-2 font-bold text-white text-sm">
-            <Cpu className="w-4 h-4 text-emerald-400" />
-            <span>HARDWARE ABSTRACTION LAYER (HAL) SELECTION</span>
+      {/* Hardware Interface Mode & Serial Bridge */}
+      <form onSubmit={handleSavePreferences} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-6">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2 font-bold text-slate-900 text-sm">
+            <Cpu className="w-4 h-4 text-emerald-600" />
+            <span>RASPBERRY PI 5 HAL & HARDWARE BUS BRIDGE</span>
           </div>
-          <span className="text-xs text-slate-400">Hardware Integration Ready</span>
         </div>
 
-        <div className="space-y-4 text-xs">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
           <div>
-            <label className="block text-slate-300 mb-2 font-bold">Active Communication Layer:</label>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <button
-                type="button"
-                onClick={() => setHardwareMode('simulator')}
-                className={`p-3 rounded-xl border text-left font-bold transition cursor-pointer ${
-                  hardwareMode === 'simulator'
-                    ? 'bg-sky-950 text-sky-300 border-sky-500 shadow-md'
-                    : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
-                }`}
-              >
-                <div>● Mock Robot Simulator</div>
-                <div className="text-[10px] font-normal text-slate-400 mt-1">
-                  Simulates full 36V physics, differential dynamics & ADC
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setHardwareMode('serial')}
-                className={`p-3 rounded-xl border text-left font-bold transition cursor-pointer ${
-                  hardwareMode === 'serial'
-                    ? 'bg-emerald-950 text-emerald-300 border-emerald-500 shadow-md'
-                    : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
-                }`}
-              >
-                <div>● ESP32 USB Serial UART</div>
-                <div className="text-[10px] font-normal text-slate-400 mt-1">
-                  Direct physical micro-USB UART bridge (115200 baud)
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setHardwareMode('espnow')}
-                className={`p-3 rounded-xl border text-left font-bold transition cursor-pointer ${
-                  hardwareMode === 'espnow'
-                    ? 'bg-indigo-950 text-indigo-300 border-indigo-500 shadow-md'
-                    : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
-                }`}
-              >
-                <div>● ESP-NOW Wireless Bridge</div>
-                <div className="text-[10px] font-normal text-slate-400 mt-1">
-                  Low-latency 2.4GHz mesh for remote field unit
-                </div>
-              </button>
-            </div>
+            <label className="block font-bold text-slate-800 mb-1">Hardware Interface Mode</label>
+            <select
+              value={hardwareMode}
+              onChange={(e) => setHardwareMode(e.target.value)}
+              className="w-full p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:border-emerald-500"
+            >
+              <option value="rpi5_lgpio">Raspberry Pi 5 Direct GPIO / RP1 Controller (rpi5_bridge.py)</option>
+              <option value="rpi5_usb">Raspberry Pi 5 USB / UART MCU Bridge (/dev/ttyACM0)</option>
+              <option value="simulator">Mock Software Simulator (Demo Mode)</option>
+            </select>
           </div>
 
-          {hardwareMode !== 'simulator' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-xl bg-slate-950 border border-slate-800">
-              <div>
-                <label className="block text-slate-400 mb-1">Serial COM Port / Device Path</label>
-                <input
-                  type="text"
-                  value={serialPort}
-                  onChange={(e) => setSerialPort(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-white font-bold"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-400 mb-1">Baud Rate</label>
-                <select
-                  value={baudRate}
-                  onChange={(e) => setBaudRate(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-white font-bold cursor-pointer"
-                >
-                  <option value="115200">115200 (Standard ESP32)</option>
-                  <option value="921600">921600 (High-Speed DMA)</option>
-                  <option value="9600">9600 (Legacy)</option>
-                </select>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Operator & Deployment Info */}
-      <form
-        onSubmit={handleSavePreferences}
-        className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm space-y-4"
-      >
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-          <div className="flex items-center gap-2 font-bold text-white text-sm">
-            <Radio className="w-4 h-4 text-sky-400" />
-            <span>OPERATOR STATION PROFILE (SIH 2024 NETRA ROBOTICS)</span>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
           <div>
-            <label className="block text-slate-400 mb-1">Officer / Operator ID</label>
+            <label className="block font-bold text-slate-800 mb-1">GPS UART Port (/dev/serial0)</label>
+            <select
+              value={baudRate}
+              onChange={(e) => setBaudRate(e.target.value)}
+              className="w-full p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:border-emerald-500"
+            >
+              <option value="9600">9600 bps (NEO-6M NMEA Standard)</option>
+              <option value="115200">115200 bps (High Speed Binary)</option>
+              <option value="38400">38400 bps</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block font-bold text-slate-800 mb-1">Officer / Operator ID</label>
             <input
               type="text"
               value={officerId}
               onChange={(e) => setOfficerId(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-white font-bold"
+              className="w-full p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:border-emerald-500"
             />
           </div>
 
           <div>
-            <label className="block text-slate-400 mb-1">Traffic Sector / Command Hub</label>
+            <label className="block font-bold text-slate-800 mb-1">Station / Command Cell Name</label>
             <input
               type="text"
               value={stationName}
               onChange={(e) => setStationName(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-white font-bold"
+              className="w-full p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:border-emerald-500"
             />
           </div>
         </div>
 
-        <div className="flex justify-end pt-2">
+        <div className="flex justify-end pt-4 border-t border-slate-100">
           <button
             type="submit"
-            id="btn-save-settings"
-            className="px-6 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold transition shadow-md border border-sky-400 cursor-pointer text-xs"
+            className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-xs shadow-xs cursor-pointer transition"
           >
-            Save Preferences
+            Save HAL Preferences
           </button>
         </div>
       </form>
