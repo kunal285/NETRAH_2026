@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "build": "echo \"No build step required for backend\"",
     "dev": "node --watch server.js",
     "start": "node server.js"
   },
