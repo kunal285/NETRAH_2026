@@ -12,6 +12,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
+import { SecureImage } from '../common/SecureImage';
 
 export const LiveEventFeed = () => {
   const { liveEvents, clearAiEvents } = useRobot();
@@ -104,12 +105,18 @@ export const LiveEventFeed = () => {
             return (
               <div
                 key={evt.eventId || Math.random()}
-                className={`p-3 rounded-xl border text-xs transition flex items-start justify-between gap-2.5 ${
+                onClick={() => {
+                  const imageId = evt.metadata?.imageId || evt.metadata?.snapshotUrl?.split('/').pop() || evt.snapshotUrl?.split('/').pop();
+                  if (imageId) {
+                    setSelectedSnapshot(imageId);
+                  }
+                }}
+                className={`p-3 rounded-xl border text-xs transition flex items-start justify-between gap-2.5 cursor-pointer hover:shadow-xs ${
                   isEmergency
-                    ? 'bg-rose-50 border-rose-200 text-rose-900'
+                    ? 'bg-rose-50 border-rose-200 text-rose-900 hover:bg-rose-100/50'
                     : isPlate
-                    ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900'
-                    : 'bg-slate-50 border-slate-200 text-slate-800'
+                    ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900 hover:bg-emerald-100/50'
+                    : 'bg-slate-50 border-slate-200 text-slate-800 hover:bg-slate-100/50'
                 }`}
               >
                 <div className="flex items-start gap-2.5 min-w-0">
@@ -139,14 +146,14 @@ export const LiveEventFeed = () => {
       {/* Snapshot Preview Modal */}
       {selectedSnapshot && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white border border-slate-200 rounded-2xl p-4 max-w-md w-full space-y-3 shadow-2xl">
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 max-w-md w-full space-y-3 shadow-2xl animate-in fade-in zoom-in duration-150">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-900">Event Snapshot</span>
-              <button onClick={() => setSelectedSnapshot(null)} className="text-slate-400 hover:text-slate-700">
+              <button onClick={() => setSelectedSnapshot(null)} className="text-slate-400 hover:text-slate-700 cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <img src={selectedSnapshot} alt="Snapshot" className="w-full rounded-xl border border-slate-200 object-cover" />
+            <SecureImage imageId={selectedSnapshot} className="w-full rounded-xl border border-slate-200 object-cover" />
           </div>
         </div>
       )}

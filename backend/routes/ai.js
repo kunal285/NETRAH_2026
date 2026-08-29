@@ -100,9 +100,9 @@ aiRouter.post('/acknowledge-ambulance', (req, res) => {
 });
 
 // Trigger Synthetic Demo Detection
-aiRouter.post('/trigger', (req, res) => {
+aiRouter.post('/trigger', async (req, res) => {
   const { type } = req.body;
-  const detection = aiService.triggerSyntheticDetection(type || 'ambulance');
+  const detection = await aiService.triggerSyntheticDetection(type || 'ambulance');
   const io = req.app.get('io');
   if (io) {
     io.emit('ai:detection', detection);

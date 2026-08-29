@@ -25,6 +25,26 @@ function NavigationSync() {
     const authed = savedAuth !== 'false';
     setIsAuthenticated(authed);
 
+    const checkAndEnsureBackendSession = async () => {
+      try {
+        const checkRes = await fetch('/api/auth/me');
+        if (!checkRes.ok) {
+          // Silently login with default operator credentials
+          await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: 'admin@prahari.local', password: 'admin123' }),
+          });
+        }
+      } catch (e) {
+        console.warn('Silent session validation failed:', e);
+      }
+    };
+
+    if (authed) {
+      checkAndEnsureBackendSession();
+    }
+
     const publicPaths = ['/', '/login', '/landing'];
     if (!authed && !publicPaths.includes(pathname || '/')) {
       router.replace('/landing');

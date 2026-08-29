@@ -520,6 +520,26 @@ export const RobotProvider = ({ children }) => {
     timestamp: liveBattery.updatedAt || new Date().toISOString(),
   };
 
+  const triggerAIDetection = useCallback(async (type) => {
+    try {
+      const res = await api.triggerAIDetection(type);
+      return res;
+    } catch (err) {
+      console.error('Failed to trigger AI detection:', err);
+    }
+  }, []);
+
+  const acknowledgeAmbulance = useCallback(async () => {
+    try {
+      const res = await api.acknowledgeAmbulance();
+      setActiveAmbulance(null);
+      setIsEmergencyModalOpen(false);
+      return res;
+    } catch (err) {
+      console.error('Failed to acknowledge ambulance:', err);
+    }
+  }, []);
+
   return (
     <RobotContext.Provider
       value={{
@@ -581,7 +601,9 @@ export const RobotProvider = ({ children }) => {
         crosswalkRisk,
         wardenGesture,
         audioSirenState,
+        setAudioSirenState,
         fpsMetrics,
+        setFpsMetrics,
 
         // Actions
         sendControlCommand,
@@ -591,6 +613,8 @@ export const RobotProvider = ({ children }) => {
         updateSettings,
         resetSettings,
         triggerScenario,
+        triggerAIDetection,
+        acknowledgeAmbulance,
 
         // Live Data Monitor Debug
         debugStats,

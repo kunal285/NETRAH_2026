@@ -12,7 +12,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('admin123');
   const [error, setError] = useState('');
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (!email || !password) {
@@ -20,14 +20,25 @@ export default function LoginPage() {
       return;
     }
 
-    if (email.includes('@') && password.length >= 4) {
-      localStorage.setItem(AUTH_KEY, 'true');
-      router.push('/');
-      router.refresh();
-      return;
-    }
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: email, password }),
+      });
 
-    setError('Invalid credentials.');
+      if (response.ok) {
+        localStorage.setItem(AUTH_KEY, 'true');
+        router.push('/');
+        router.refresh();
+        return;
+      }
+
+      const data = await response.json();
+      setError(data.error || 'Invalid credentials.');
+    } catch (err) {
+      setError('Authentication server connection failed.');
+    }
   };
 
   return (

@@ -213,9 +213,9 @@ async function startServer() {
     });
 
     // Trigger Synthetic AI Detection (Ambulance, ANPR, Vehicle, Face)
-    app.post('/api/ai/trigger', (req, res) => {
+    app.post('/api/ai/trigger', async (req, res) => {
       const { type } = req.body;
-      const detection = aiService.triggerSyntheticDetection(type || 'ambulance');
+      const detection = await aiService.triggerSyntheticDetection(type || 'ambulance');
       io.emit('ai:detection', detection);
       if (type === 'ambulance') {
         io.emit('ai:ambulance_alert', detection);

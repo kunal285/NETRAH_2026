@@ -6,8 +6,11 @@ import { NumberPlate } from '../models/NumberPlate.js';
 import { AmbulanceEvent } from '../models/AmbulanceEvent.js';
 import { VehicleDetection } from '../models/VehicleDetection.js';
 import { PedestrianEvent } from '../models/PedestrianEvent.js';
+import { s3Storage } from '../storage/s3Storage.js';
+import { generateS3Key } from '../routes/storage.js';
+import { StoredImage } from '../models/StoredImage.js';
 
-const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+const getAiServiceUrl = () => process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
 class AiInferenceService extends EventEmitter {
   constructor() {
@@ -52,7 +55,7 @@ class AiInferenceService extends EventEmitter {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 2000);
-      const res = await fetch(`${AI_SERVICE_URL}/health`, { signal: controller.signal });
+      const res = await fetch(`${getAiServiceUrl()}/health`, { signal: controller.signal });
       clearTimeout(timeoutId);
 
       if (res.ok) {
@@ -79,7 +82,7 @@ class AiInferenceService extends EventEmitter {
   getStatus() {
     return {
       aiOnline: this.aiOnline,
-      serviceUrl: AI_SERVICE_URL,
+      serviceUrl: getAiServiceUrl(),
       latencyMs: this.lastInferenceLatencyMs,
       activeAmbulance: this.activeAmbulance,
       trafficStats: this.inMemoryTrafficStats,
@@ -92,7 +95,7 @@ class AiInferenceService extends EventEmitter {
 
     if (this.aiOnline) {
       try {
-        const res = await fetch(`${AI_SERVICE_URL}/detect/frame`, {
+        const res = await fetch(`${getAiServiceUrl()}/detect/frame`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -127,6 +130,46 @@ class AiInferenceService extends EventEmitter {
     return result;
   }
 
+  async _uploadPayloadImage(payload, imageType) {
+    if (!payload?.image) return null;
+    try {
+      const base64Data = payload.image.replace(/^data:image\/\w+;base64,/, '');
+      const buffer = Buffer.from(base64Data, 'base64');
+      const extension = 'jpg';
+      const mimeType = 'image/jpeg';
+      const imageId = crypto.randomUUID();
+      const robotId = payload.camera_id || 'PRAHARI-01';
+      const s3Key = generateS3Key(imageType, robotId, extension);
+      
+      await s3Storage.upload(buffer, s3Key, mimeType);
+      
+      const bucketName = process.env.IMAGE_STORAGE_BUCKET;
+      const imageData = {
+        imageId,
+        robotId,
+        cameraSource: payload.isDemo ? 'demo' : 'device',
+        imageType,
+        storageKey: s3Key,
+        imageUrl: `/api/storage/image/${imageId}`,
+        mimeType,
+        fileSize: buffer.length,
+        isDemo: Boolean(payload.isDemo),
+        imageKey: s3Key,
+        storage: 's3',
+        bucket: bucketName,
+        contentType: mimeType,
+      };
+
+      if (db.getStatus().connected) {
+        await StoredImage.create(imageData);
+      }
+      return imageData;
+    } catch (err) {
+      console.error('[AiInferenceService] S3 upload error:', err.message);
+      return null;
+    }
+  }
+
   async _handleEvents(result, payload, io) {
     const isDemo = Boolean(payload?.isDemo);
     const cameraId = payload?.camera_id || 'CAM-01';
@@ -134,9 +177,15 @@ class AiInferenceService extends EventEmitter {
     // 1. Ambulance Event
     if (result.emergency_ambulance && result.emergency_ambulance.is_emergency) {
       const amb = result.emergency_ambulance;
+      
+      // Upload frame to S3
+      const storedImage = await this._uploadPayloadImage(payload, 'ambulance');
+      const snapshotUrl = storedImage ? storedImage.imageUrl : null;
+
       this.activeAmbulance = {
         ...amb,
         timestamp: result.timestamp || new Date().toISOString(),
+        snapshotUrl,
       };
 
       const eventObj = {
@@ -147,12 +196,14 @@ class AiInferenceService extends EventEmitter {
         confidence: amb.combined_confidence || 0.95,
         objectClass: 'ambulance',
         lane: amb.lane,
+        snapshotUrl,
         metadata: {
           direction: amb.direction,
           distanceMeters: amb.distance_meters,
           sirenConfidence: amb.siren_confidence,
           visualConfidence: amb.confidence,
           status: amb.status,
+          snapshotUrl,
         },
         isDemo,
       };
@@ -177,6 +228,11 @@ class AiInferenceService extends EventEmitter {
           if (!isDuplicate) {
             this.recentPlatesCooldown.set(plateNumber, Date.now());
 
+            // Upload frame to S3
+            const storedImage = await this._uploadPayloadImage(payload, 'number plate');
+            const snapshotUrl = storedImage ? storedImage.imageUrl : null;
+            const imageId = storedImage ? storedImage.imageId : null;
+
             const anprEvent = {
               eventId: `plate-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
               type: 'PLATE_DETECTED',
@@ -186,11 +242,14 @@ class AiInferenceService extends EventEmitter {
               objectClass: 'license_plate',
               bbox: p.bbox || [],
               lane: p.lane || 'Lane 1',
+              snapshotUrl,
               metadata: {
                 plateNumber,
                 state: plateData.state || 'Maharashtra',
                 vehicleType: p.class_name || 'CAR',
                 isValid: plateData.is_valid !== false,
+                snapshotUrl,
+                imageId,
               },
               isDemo,
             };
@@ -210,6 +269,11 @@ class AiInferenceService extends EventEmitter {
     // 3. Crosswalk Safety Risk Event
     if (result.crosswalk_safety && result.crosswalk_safety.risk_level === 'VIOLATION / RISK') {
       const risk = result.crosswalk_safety;
+
+      // Upload frame to S3
+      const storedImage = await this._uploadPayloadImage(payload, 'detection evidence');
+      const snapshotUrl = storedImage ? storedImage.imageUrl : null;
+
       const riskEvent = {
         eventId: `risk-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
         type: 'CROSSWALK_RISK',
@@ -217,11 +281,13 @@ class AiInferenceService extends EventEmitter {
         cameraId,
         confidence: risk.score || 0.92,
         objectClass: 'pedestrian_crosswalk',
+        snapshotUrl,
         metadata: {
           riskLevel: risk.risk_level,
           inCrosswalkCount: risk.in_crosswalk_count,
           approachingVehicles: risk.approaching_vehicles,
           message: risk.message,
+          snapshotUrl,
         },
         isDemo,
       };
@@ -270,6 +336,7 @@ class AiInferenceService extends EventEmitter {
       cameraId: anprEvent.cameraId,
       lane: anprEvent.lane,
       isDemo: anprEvent.isDemo,
+      originalImageId: anprEvent.metadata.imageId || null,
     };
 
     this.inMemoryAnpr.unshift(record);
@@ -287,6 +354,7 @@ class AiInferenceService extends EventEmitter {
           robotId: record.cameraId,
           timestamp: record.timestamp,
           isDemo: record.isDemo,
+          originalImageId: record.originalImageId,
         });
       } catch (err) {
         console.warn('[AiService] DB save ANPR error:', err.message);
