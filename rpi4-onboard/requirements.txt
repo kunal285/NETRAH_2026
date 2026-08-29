@@ -1,0 +1,6 @@
+pigpio>=1.78
+smbus2>=0.4.2
+python-socketio[client]>=5.11.0
+requests>=2.31.0
+numpy>=1.24.0
+opencv-python-headless>=4.8.0

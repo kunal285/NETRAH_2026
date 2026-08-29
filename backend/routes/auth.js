@@ -21,16 +21,11 @@ authRouter.post('/login', async (req, res, next) => {
     const normalizedInput = String(username || '').trim().toLowerCase();
 
     if (!db.getStatus().connected) {
-      if (
-        (normalizedInput === 'admin' || normalizedInput === 'admin@prahari.local') &&
-        String(password || '') === 'admin123'
-      ) {
-        const token = issueToken(DEMO_USER);
-        const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
-        res.setHeader('Set-Cookie', `token=${encodeURIComponent(token)}; Max-Age=28800; HttpOnly; SameSite=Lax${secure}`);
-        return res.json({ success: true, user: { id: DEMO_USER.id, username: DEMO_USER.username, role: DEMO_USER.role, fullName: DEMO_USER.fullName } });
-      }
-      return res.status(401).json({ error: 'AUTHENTICATION_FAILED' });
+      return res.status(503).json({
+        success: false,
+        error: 'DATABASE_UNAVAILABLE',
+        message: 'Authentication database is currently unavailable. Please verify MongoDB connection.',
+      });
     }
 
     const user = await User.findOne({ $or: [{ username: normalizedInput }, { email: normalizedInput }] });

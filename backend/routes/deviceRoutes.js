@@ -144,9 +144,15 @@ export function createDeviceRouter() {
   });
 
   /**
-   * GET /api/devices/:robotId
+   * GET /api/devices/:robotId and /api/devices/state/:robotId
    * Full detailed state of a specific robot
    */
+  router.get('/state/:robotId?', (req, res) => {
+    const robotId = req.params.robotId || 'PRAHARI-01';
+    const state = deviceService.getDeviceState(robotId);
+    res.json({ success: true, robot: state });
+  });
+
   router.get('/:robotId', (req, res) => {
     const robotId = req.params.robotId;
     const state = deviceService.getDeviceState(robotId);

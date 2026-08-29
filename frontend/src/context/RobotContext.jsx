@@ -131,15 +131,15 @@ export const RobotProvider = ({ children }) => {
   });
   const [crosswalkRisk, setCrosswalkRisk] = useState({
     risk_level: 'SAFE',
-    score: 0.1,
+    score: null,
     in_crosswalk_count: 0,
     total_pedestrians: 0,
     message: 'Crosswalk zone clear.',
   });
   const [wardenGesture, setWardenGesture] = useState({
-    gesture: 'STOP',
-    confidence: 0.92,
-    description: 'Traffic Officer: Ready',
+    gesture: 'NO ACTIVE GESTURE',
+    confidence: null,
+    description: 'Awaiting officer gesture',
   });
   const [audioSirenState, setAudioSirenState] = useState({
     active: false,
@@ -164,17 +164,28 @@ export const RobotProvider = ({ children }) => {
     return { text: `${diffSeconds < 1 ? (diffSeconds * 1000).toFixed(0) + 'ms' : diffSeconds.toFixed(1) + 's'} ago`, isStale: false, isNull: false };
   }, []);
 
+  const [databaseStatus, setDatabaseStatus] = useState('disconnected');
+
   // Fetch initial devices & configurations
   const fetchInitialData = useCallback(async () => {
     try {
-      const [devListRes, ambData, settsData, aiStat, aiEvts, anprRes] = await Promise.allSettled([
-        fetch('http://localhost:4000/api/devices/all').then((r) => r.json()),
+      const [healthRes, devListRes, ambData, settsData, aiStat, aiEvts, anprRes] = await Promise.allSettled([
+        api.getHealth(),
+        fetch('/api/devices/all').then((r) => r.json()),
         api.getActiveAmbulance(),
         api.getSettings(),
         api.getAiStatus(),
         api.getAiEvents({ limit: 30 }),
         api.getAnprList({}),
       ]);
+
+      if (healthRes.status === 'fulfilled' && healthRes.value?.services) {
+        setBackendOnline(true);
+        setDatabaseStatus(healthRes.value.services.database === 'connected' ? 'connected' : 'disconnected');
+      } else {
+        setBackendOnline(false);
+        setDatabaseStatus('disconnected');
+      }
 
       if (devListRes.status === 'fulfilled' && devListRes.value?.devices) {
         setRobotsList(devListRes.value.devices);
@@ -186,10 +197,10 @@ export const RobotProvider = ({ children }) => {
       if (aiStat.status === 'fulfilled') setAiStatus(aiStat.value);
       if (aiEvts.status === 'fulfilled' && aiEvts.value?.events) setLiveEvents(aiEvts.value.events);
       if (anprRes.status === 'fulfilled' && anprRes.value?.plates) setAnprList(anprRes.value.plates);
-      setBackendOnline(true);
     } catch (err) {
       console.warn('[RobotContext] Initial data sync warning:', err);
       setBackendOnline(false);
+      setDatabaseStatus('disconnected');
     }
   }, []);
 
@@ -396,7 +407,7 @@ export const RobotProvider = ({ children }) => {
   const sendControlCommand = async (command, speed) => {
     setCommandStatus('PENDING');
     try {
-      const res = await fetch('http://localhost:4000/api/robot/control', {
+      const res = await fetch('/api/robot/control', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command, speed, robotId: selectedRobotId }),
@@ -419,7 +430,7 @@ export const RobotProvider = ({ children }) => {
 
   const emergencyStopRobot = async (reason) => {
     setEmergencyStop(true);
-    return fetch('http://localhost:4000/api/robot/emergency-stop', {
+    return fetch('/api/robot/emergency-stop', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ reason: reason || 'Operator E-Stop', robotId: selectedRobotId }),
@@ -428,7 +439,7 @@ export const RobotProvider = ({ children }) => {
 
   const resetSafety = async () => {
     setEmergencyStop(false);
-    return fetch('http://localhost:4000/api/robot/reset-safety', {
+    return fetch('/api/robot/reset-safety', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ robotId: selectedRobotId }),
@@ -438,7 +449,7 @@ export const RobotProvider = ({ children }) => {
   const changeControlMode = async (mode) => {
     setControlMode(mode);
     setIsDemoMode(mode === 'DEMO');
-    return fetch('http://localhost:4000/api/robot/mode', {
+    return fetch('/api/robot/mode', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mode, robotId: selectedRobotId }),
@@ -578,6 +589,7 @@ export const RobotProvider = ({ children }) => {
         activeAmbulance,
         socketConnected,
         backendOnline,
+        databaseStatus,
         settings,
         activeTab,
         setActiveTab,
@@ -605,16 +617,21 @@ export const RobotProvider = ({ children }) => {
         fpsMetrics,
         setFpsMetrics,
 
-        // Actions
+        // Actions & Compatibility Aliases
         sendControlCommand,
+        sendControl: sendControlCommand,
+        stopRobot: () => sendControlCommand('STOP', 0),
         emergencyStopRobot,
+        emergencyStop: emergencyStopRobot,
         resetSafety,
         changeControlMode,
+        setMode: changeControlMode,
         updateSettings,
         resetSettings,
         triggerScenario,
         triggerAIDetection,
         acknowledgeAmbulance,
+        telemetry: telemetryHistory,
 
         // Live Data Monitor Debug
         debugStats,

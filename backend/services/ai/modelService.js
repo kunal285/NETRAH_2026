@@ -1,14 +1,14 @@
-import { ObjectTracker } from './tracker.js';
-import { PlateDetector } from './plate_detector.js';
-import { OCREngine } from './ocr_engine.js';
-import { AmbulanceDetector } from './ambulance_detector.js';
-import { PedestrianDetector } from './pedestrian_detector.js';
-import { WardenGestureRecognizer } from './warden_gesture.js';
+import {
+  ObjectTracker,
+  OCREngine,
+  AmbulanceDetector,
+  PedestrianDetector,
+  WardenGestureRecognizer
+} from './scoringService.js';
 
-export class VehicleDetector {
+export class ModelService {
   constructor() {
     this.tracker = new ObjectTracker();
-    this.plateDetector = new PlateDetector();
     this.ocrEngine = new OCREngine();
     this.ambulanceDetector = new AmbulanceDetector();
     this.pedestrianDetector = new PedestrianDetector();
@@ -22,7 +22,6 @@ export class VehicleDetector {
       if (imageData.includes(",")) {
         cleanData = imageData.split(",")[1];
       }
-      // Return a basic dimension placeholder for tracking
       return { width: 1920, height: 1080, format: 'RGB' };
     } catch (e) {
       return null;
@@ -33,7 +32,6 @@ export class VehicleDetector {
     const startTime = Date.now();
     const detections = [];
 
-    // If incoming hints / client bounding boxes are passed
     if (hintDetections && Array.isArray(hintDetections)) {
       for (const item of hintDetections) {
         let clsName = (item.class || "car").toLowerCase();
@@ -57,15 +55,12 @@ export class VehicleDetector {
       }
     }
 
-    // Update object tracking for consistent trackIds
     const trackedObjects = this.tracker.update(detections, lanes);
 
-    // Categorize tracked detections
     const vehicles = trackedObjects.filter(d => ["car", "motorcycle", "bus", "truck", "ambulance", "vehicle"].includes(d.class_name));
     const pedestrians = trackedObjects.filter(d => ["person", "pedestrian", "warden", "officer"].includes(d.class_name));
     const plates = trackedObjects.filter(d => d.class_name === "plate" || d.plate !== undefined);
 
-    // Check emergency ambulance
     let ambulanceEvent = null;
     for (const v of vehicles) {
       if ((v.class_name || "").toLowerCase().includes("ambulance")) {
@@ -79,16 +74,13 @@ export class VehicleDetector {
       }
     }
 
-    // Check crosswalk safety & pedestrian risk
     const crosswalkEval = this.pedestrianDetector.assessRisk(pedestrians, vehicles);
 
-    // Check traffic warden gestures if pedestrians exist
     let gestureResult = null;
     if (pedestrians.length > 0) {
       gestureResult = this.wardenGesture.recognizeGesture(null, "STOP");
     }
 
-    // Compile traffic statistics
     const stats = this.tracker.getStats();
     const inferenceLatencyMs = Date.now() - startTime;
 
@@ -115,7 +107,7 @@ export class VehicleDetector {
       plates: plates,
       performance: {
         inference_latency_ms: inferenceLatencyMs,
-        model: "YOLOv8-TrafficNet + OCR-V4 (Node.js Migrated)",
+        model: "YOLOv8-TrafficNet + OCR-V4 (Node.js Integrated)",
         device: "CPU / Node.js Engine",
         fps_capacity: Number((1000.0 / Math.max(1, inferenceLatencyMs)).toFixed(1))
       }

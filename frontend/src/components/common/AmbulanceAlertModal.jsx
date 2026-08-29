@@ -47,7 +47,7 @@ export const AmbulanceAlertModal = () => {
           <div className="flex justify-between border-b border-slate-200/60 pb-2">
             <span className="text-slate-500">Confidence Score:</span>
             <span className="text-emerald-700 font-bold">
-              {Math.round((activeAmbulance.confidence || 0.95) * 100)}% Match
+              {activeAmbulance.confidence != null ? `${Math.round(activeAmbulance.confidence * 100)}% Match` : 'N/A'}
             </span>
           </div>
           <div className="flex justify-between border-b border-slate-200/60 pb-2">

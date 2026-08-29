@@ -14,14 +14,18 @@ const list = (Model) => async (req, res, next) => {
     const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 25));
     if (!db.getStatus().connected) {
-      return res.json({ data: [], total: 0, page, limit, totalPages: 1 });
+      return res.status(503).json({
+        success: false,
+        error: 'DATABASE_UNAVAILABLE',
+        message: 'MongoDB database is currently unreachable. Connect to MongoDB to query history logs.',
+      });
     }
     const filter = req.query.robotId ? { robotId: req.query.robotId } : {};
     const [data, total] = await Promise.all([
       Model.find(filter).sort({ timestamp: -1, startTime: -1, createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
       Model.countDocuments(filter),
     ]);
-    res.json({ data, total, page, limit, totalPages: Math.ceil(total / limit) || 1 });
+    res.json({ success: true, data, total, page, limit, totalPages: Math.ceil(total / limit) || 1 });
   } catch (error) {
     next(error);
   }

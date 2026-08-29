@@ -6,80 +6,16 @@
  * - Traffic vehicle types (Car, Bus, Bike, Truck)
  * - Pedestrian & human crosswalk events
  */
+import crypto from 'crypto';
+
 class DetectionService {
   constructor() {
     this.detections = [];
-
-    // Seed realistic traffic perception events
-    this.seedInitialDetections();
-  }
-
-  seedInitialDetections() {
-    const mockSeed = [
-      {
-        id: 'det-001',
-        timestamp: new Date(Date.now() - 1000 * 60 * 12).toISOString(),
-        type: 'anpr',
-        result: 'Plate: MH12AB1234 (Maharashtra)',
-        confidence: 0.94,
-        camera: 'front_1080p',
-        details: {
-          plateNumber: 'MH12AB1234',
-          vehicleType: 'SEDAN',
-          plateState: 'Maharashtra',
-          bbox: [18, 42, 34, 28],
-        },
-        status: 'VERIFIED',
-      },
-      {
-        id: 'det-002',
-        timestamp: new Date(Date.now() - 1000 * 60 * 8).toISOString(),
-        type: 'vehicle',
-        result: 'Heavy Transport Truck (Lane 2)',
-        confidence: 0.88,
-        camera: 'front_1080p',
-        details: {
-          vehicleType: 'TRUCK',
-          color: 'Blue',
-          bbox: [48, 22, 42, 55],
-        },
-        status: 'LOGGED',
-      },
-      {
-        id: 'det-003',
-        timestamp: new Date(Date.now() - 1000 * 60 * 3).toISOString(),
-        type: 'ambulance',
-        result: 'Emergency Ambulance Detected (Siren & Flashers)',
-        confidence: 0.96,
-        camera: 'front_1080p',
-        details: {
-          sirenDetected: true,
-          corridorPriority: 'HIGH',
-          bbox: [28, 30, 44, 48],
-        },
-        status: 'ACTIVE_CORRIDOR',
-      },
-      {
-        id: 'det-004',
-        timestamp: new Date(Date.now() - 1000 * 60 * 1).toISOString(),
-        type: 'face',
-        result: 'Traffic Police Officer / Pedestrian Crosswalk',
-        confidence: 0.91,
-        camera: 'front_1080p',
-        details: {
-          personLabel: 'Traffic Warden',
-          bbox: [10, 35, 20, 50],
-        },
-        status: 'VERIFIED',
-      },
-    ];
-
-    this.detections = mockSeed;
   }
 
   addDetection(detection) {
     const item = {
-      id: detection.id || `det-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      id: detection.id || `det-${crypto.randomUUID()}`,
       timestamp: detection.timestamp || new Date().toISOString(),
       type: detection.type,
       result: detection.result,

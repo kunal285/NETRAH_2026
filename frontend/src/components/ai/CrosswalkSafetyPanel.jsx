@@ -78,7 +78,7 @@ export const CrosswalkSafetyPanel = () => {
           <div className="flex justify-between items-center text-xs">
             <span className="text-slate-500 font-medium">Traffic Warden Signal:</span>
             <span className="text-emerald-700 font-bold">
-              {Math.round((wardenGesture.confidence || 0.9) * 100)}% Confidence
+              {wardenGesture.confidence != null ? `${Math.round(wardenGesture.confidence * 100)}% Confidence` : 'Awaiting gesture'}
             </span>
           </div>
 

@@ -51,15 +51,72 @@ export const SystemView = () => {
     return e.level === levelFilter;
   });
 
+  const [healthData, setHealthData] = useState(null);
+
+  const fetchHealth = async () => {
+    try {
+      const res = await api.getHealth();
+      setHealthData(res);
+    } catch {
+      setHealthData(null);
+    }
+  };
+
+  useEffect(() => {
+    fetchHealth();
+    const interval = setInterval(fetchHealth, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
   const healthItems = [
-    { label: 'ROBOT CONTROLLER', status: robotState?.status === 'ONLINE' ? 'ONLINE' : 'STANDBY', icon: Bot, variant: 'green' },
-    { label: 'BATTERY INTERLOCK', status: 'NORMAL', icon: ShieldCheck, variant: 'green' },
-    { label: 'DUAL MY1016 MOTORS', status: 'NORMAL', icon: Cpu, variant: 'green' },
-    { label: 'HC-SR04 SENSORS', status: 'NORMAL', icon: Network, variant: 'green' },
-    { label: '1080p CAMERA STREAM', status: 'ONLINE', icon: Camera, variant: 'green' },
-    { label: 'PYTHON AI MICROSERVICE', status: 'ONLINE (7ms)', icon: BrainCircuit, variant: 'green' },
-    { label: 'MONGODB DATABASE', status: backendOnline ? 'CONNECTED' : 'STANDALONE', icon: Database, variant: backendOnline ? 'green' : 'amber' },
-    { label: 'NODE.JS BACKEND', status: 'ONLINE', icon: Server, variant: 'green' },
+    {
+      label: 'NODE.JS BACKEND',
+      status: backendOnline ? 'ONLINE' : 'OFFLINE',
+      icon: Server,
+      variant: backendOnline ? 'green' : 'red',
+    },
+    {
+      label: 'MONGODB DATABASE',
+      status: healthData?.services?.database === 'connected' ? 'CONNECTED' : 'DISCONNECTED',
+      icon: Database,
+      variant: healthData?.services?.database === 'connected' ? 'green' : 'amber',
+    },
+    {
+      label: 'AI PERCEPTION ENGINE',
+      status: healthData?.services?.ai === 'ready' ? 'READY' : 'STANDBY',
+      icon: BrainCircuit,
+      variant: healthData?.services?.ai === 'ready' ? 'green' : 'slate',
+    },
+    {
+      label: 'RPI5 SUBSYSTEM',
+      status: healthData?.services?.rpi5 === 'hardware' ? 'HARDWARE ACTIVE' : healthData?.services?.rpi5 === 'simulated' ? 'SIMULATED' : 'STANDBY',
+      icon: Cpu,
+      variant: healthData?.services?.rpi5 === 'hardware' ? 'green' : 'slate',
+    },
+    {
+      label: 'SOCKET.IO WEBSOCKET',
+      status: socketConnected ? 'CONNECTED' : 'DISCONNECTED',
+      icon: Network,
+      variant: socketConnected ? 'green' : 'red',
+    },
+    {
+      label: 'ROBOT CONTROLLER',
+      status: robotState?.status === 'ONLINE' ? 'ONLINE' : 'OFFLINE',
+      icon: Bot,
+      variant: robotState?.status === 'ONLINE' ? 'green' : 'slate',
+    },
+    {
+      label: '1080p CAMERA STREAM',
+      status: robotCameraStatus === 'ONLINE' || robotCameraStatus === 'STREAMING' ? 'ACTIVE' : 'STANDBY',
+      icon: Camera,
+      variant: robotCameraStatus === 'ONLINE' || robotCameraStatus === 'STREAMING' ? 'green' : 'slate',
+    },
+    {
+      label: 'SAFETY INTERLOCK',
+      status: robotState?.safety?.emergencyStop ? 'E-STOP ACTIVE' : 'NOMINAL',
+      icon: ShieldCheck,
+      variant: robotState?.safety?.emergencyStop ? 'red' : 'green',
+    },
   ];
 
   return (

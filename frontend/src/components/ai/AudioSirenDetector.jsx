@@ -55,91 +55,12 @@ export const AudioSirenDetector = () => {
 
       startWaveformRender();
     } catch (err) {
-      console.warn('Microphone access failed. Falling back to Acoustic Simulation Mode:', err.message);
-      setIsSimulated(true);
-      setIsListening(true);
+      setErrorMessage('Microphone unavailable or permission denied. Connect an audio input to detect live siren harmonics.');
+      setIsListening(false);
       if (setAudioSirenState) {
-        setAudioSirenState({ active: true, sirenDetected: false, confidence: 0, peakFrequency: 0 });
+        setAudioSirenState({ active: false, sirenDetected: false, confidence: 0, peakFrequency: 0 });
       }
-      startSimulatedWaveformRender();
     }
-  };
-
-  const startSimulatedWaveformRender = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const bufferLength = 128;
-    const dataArray = new Uint8Array(bufferLength);
-    const sampleRate = 44100;
-
-    let tick = 0;
-    let sweepAngle = 0;
-
-    const renderFrame = () => {
-      animFrameRef.current = requestAnimationFrame(renderFrame);
-
-      const width = canvas.width;
-      const height = canvas.height;
-      ctx.clearRect(0, 0, width, height);
-
-      // Background subtle grid
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, width, height);
-
-      // Sweep dominant frequency back and forth between 600Hz and 1700Hz
-      sweepAngle += 0.02;
-      const dominantHz = Math.round(1125 + Math.sin(sweepAngle) * 525);
-      setPeakFreq(dominantHz);
-
-      const maxVal = 180 + Math.round(Math.random() * 50);
-      const isSirenHarmonic = dominantHz >= 650 && dominantHz <= 1600;
-      const conf = isSirenHarmonic ? Math.min(0.98, 0.70 + (maxVal / 255) * 0.28) : 0;
-      setSirenConfidence(conf);
-
-      // Map dominantHz to index in 128 bins (range 0 to 22000Hz)
-      const dominantBinIndex = Math.round((dominantHz * bufferLength) / (sampleRate / 2));
-
-      // Fill dataArray with noise and a peak at dominantBinIndex
-      for (let i = 0; i < bufferLength; i++) {
-        let val = 10 + Math.random() * 15; // noise floor
-        if (Math.abs(i - dominantBinIndex) < 4) {
-          const distance = Math.abs(i - dominantBinIndex);
-          val = maxVal * (1 - distance * 0.22);
-        }
-        dataArray[i] = Math.max(0, Math.min(255, val));
-      }
-
-      // Draw Bars
-      const barWidth = (width / bufferLength) * 3;
-      let x = 0;
-
-      for (let i = 0; i < bufferLength / 3; i++) {
-        const barHeight = (dataArray[i] / 255) * height;
-        const currentFreq = Math.round((i * (sampleRate / 2)) / bufferLength);
-
-        if (currentFreq >= 650 && currentFreq <= 1600 && isSirenHarmonic && Math.abs(i - dominantBinIndex) < 4) {
-          ctx.fillStyle = '#ef4444'; // Red for siren band peak
-        } else {
-          ctx.fillStyle = '#10b981'; // Green for normal frequencies
-        }
-
-        ctx.fillRect(x, height - barHeight, barWidth - 1, barHeight);
-        x += barWidth;
-      }
-
-      tick++;
-      if (tick % 30 === 0 && setAudioSirenState) {
-        setAudioSirenState({
-          active: true,
-          sirenDetected: isSirenHarmonic,
-          confidence: conf,
-          peakFrequency: dominantHz,
-        });
-      }
-    };
-
-    renderFrame();
   };
 
   const stopAcousticListener = () => {
@@ -288,12 +209,6 @@ export const AudioSirenDetector = () => {
         </div>
       )}
 
-      {isSimulated && (
-        <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center gap-2">
-          <AlertTriangle className="w-4 h-4 shrink-0" />
-          <span>Microphone access failed. Running in Acoustic Simulation Mode.</span>
-        </div>
-      )}
 
       {/* FFT Spectrum Waveform Visualizer */}
       <div className="relative w-full h-24 rounded-xl bg-slate-50 border border-slate-200 overflow-hidden flex items-center justify-center">

@@ -104,7 +104,7 @@ export const LiveEventFeed = () => {
 
             return (
               <div
-                key={evt.eventId || Math.random()}
+                key={evt.eventId || evt.id || `evt-${idx}`}
                 onClick={() => {
                   const imageId = evt.metadata?.imageId || evt.metadata?.snapshotUrl?.split('/').pop() || evt.snapshotUrl?.split('/').pop();
                   if (imageId) {

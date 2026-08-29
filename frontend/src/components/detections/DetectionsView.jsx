@@ -33,9 +33,11 @@ export const DetectionsView = () => {
     face: 0,
   });
   const [loading, setLoading] = useState(false);
+  const [dbError, setDbError] = useState('');
 
   const fetchDetections = useCallback(async () => {
     setLoading(true);
+    setDbError('');
     try {
       const res = await api.getDetectionsLog({
         type: typeFilter,
@@ -43,12 +45,16 @@ export const DetectionsView = () => {
         page,
         limit: 10,
       });
-      setDetections(res.data || []);
-      setTotal(res.total || 0);
-      setTotalPages(res.totalPages || 1);
-      if (res.stats) setStats(res.stats);
+      if (res.error === 'DATABASE_UNAVAILABLE') {
+        setDbError('MongoDB Database is currently unreachable. Connect to MongoDB to view historical records.');
+      } else {
+        setDetections(res.data || []);
+        setTotal(res.total || 0);
+        setTotalPages(res.totalPages || 1);
+        if (res.stats) setStats(res.stats);
+      }
     } catch (e) {
-      console.error('Failed to load detections', e);
+      setDbError('Database Connection Error: Failed to reach database.');
     } finally {
       setLoading(false);
     }
@@ -169,6 +175,19 @@ export const DetectionsView = () => {
           </div>
         </div>
 
+        {/* Database Error Banner */}
+        {dbError && (
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center justify-between">
+            <span>{dbError}</span>
+            <button
+              onClick={fetchDetections}
+              className="px-2.5 py-1 bg-white hover:bg-amber-100 border border-amber-300 rounded-lg font-semibold text-[11px] cursor-pointer"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
         {/* Table */}
         <div className="overflow-x-auto rounded-xl border border-slate-200">
           <table className="w-full text-left text-xs border-collapse">
@@ -201,7 +220,7 @@ export const DetectionsView = () => {
                       {d.metadata?.plateNumber || d.label || d.type}
                     </td>
                     <td className="py-3 px-3 font-mono font-bold text-emerald-700">
-                      {Math.round((d.confidence || 0.9) * 100)}%
+                      {d.confidence != null ? `${Math.round(d.confidence * 100)}%` : 'N/A'}
                     </td>
                     <td className="py-3 px-3 text-slate-500 text-[11px]">
                       {d.cameraSource || 'Optical 1080p'}

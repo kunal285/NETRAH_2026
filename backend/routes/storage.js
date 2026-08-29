@@ -6,6 +6,7 @@ import { StoredImage } from '../models/StoredImage.js';
 import { s3Storage } from '../storage/s3Storage.js';
 import { authenticate } from '../middleware/auth.js';
 import { db } from '../config/db.js';
+import { generateS3Key } from '../utils/storageUtils.js';
 
 export const storageRouter = express.Router();
 
@@ -35,30 +36,6 @@ function validateMagicNumbers(buffer) {
   return null;
 }
 
-// Helper to generate S3 Key
-export function generateS3Key(type, robotId = 'PRAHARI-01', extension = 'jpg') {
-  const date = new Date();
-  const yyyy = date.getUTCFullYear();
-  const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
-  const dd = String(date.getUTCDate()).padStart(2, '0');
-  const uniqueId = crypto.randomUUID();
-
-  const cleanType = String(type || '').trim().toLowerCase();
-  
-  if (cleanType === 'number plate' || cleanType === 'anpr') {
-    return `anpr/${yyyy}/${mm}/${dd}/${uniqueId}.${extension}`;
-  } else if (cleanType === 'ambulance') {
-    return `ambulance/${yyyy}/${mm}/${dd}/${uniqueId}.${extension}`;
-  } else if (cleanType === 'detection evidence' || cleanType === 'incident') {
-    return `incidents/${yyyy}/${mm}/${dd}/${uniqueId}.${extension}`;
-  } else if (cleanType === 'robot snapshot') {
-    return `robot/${robotId}/snapshots/${yyyy}/${mm}/${dd}/${uniqueId}.${extension}`;
-  } else if (cleanType === 'face') {
-    return `faces/enrolled/${uniqueId}.${extension}`;
-  } else {
-    return `uploads/${yyyy}/${mm}/${dd}/${uniqueId}.${extension}`;
-  }
-}
 
 // POST /api/storage/upload
 storageRouter.post('/upload', authenticate, upload.single('image'), async (req, res, next) => {

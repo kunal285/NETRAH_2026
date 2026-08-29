@@ -1,5 +1,6 @@
 import express from 'express';
 import http from 'http';
+import crypto from 'crypto';
 import { Server as SocketIOServer } from 'socket.io';
 import dotenv from 'dotenv';
 import { db } from './config/db.js';
@@ -11,7 +12,8 @@ import { deviceService } from './services/deviceService.js';
 import { safetyService } from './services/safetyService.js';
 import { detectionService } from './services/detectionService.js';
 import { aiService } from './services/aiService.js';
-import { aiInferenceService } from './services/aiInferenceService.js';
+import { inferenceService } from './services/ai/inferenceService.js';
+import { rpi5Manager } from './services/rpi5/rpi5Manager.js';
 import { settingsService } from './services/settingsService.js';
 import { mockRobot } from './simulator/mockRobot.js';
 
@@ -44,17 +46,30 @@ async function startServer() {
     // REST API ENDPOINTS
     // ----------------------------------------------------
 
-    // Health check
-    app.get('/api/health', (req, res) => {
-      res.json({
-        status: db.getStatus().connected ? 'ok' : 'degraded',
-        service: 'PRAHARI Traffic-Police Robot Command Server',
-        uptime: process.uptime(),
+    // Health check (Supports both /health and /api/health)
+    const healthHandler = (req, res) => {
+      const dbStatus = db.getStatus();
+      const isDbConnected = dbStatus.connected;
+      res.status(isDbConnected ? 200 : 200).json({
+        success: true,
+        service: 'NETRAH Backend',
+        status: isDbConnected ? 'healthy' : 'degraded',
+        services: {
+          database: isDbConnected ? 'connected' : 'disconnected',
+          databaseDetails: {
+            state: dbStatus.state,
+            host: dbStatus.host || null,
+          },
+          ai: 'ready',
+          rpi5: rpi5Manager.getStatus().mode === 'hardware' ? 'ready' : 'simulated',
+          websocket: 'ready',
+        },
         timestamp: new Date().toISOString(),
-        database: db.getStatus(),
-        devicesOnline: Array.from(deviceService.devices.values()).filter((d) => d.status === 'ONLINE').length,
       });
-    });
+    };
+
+    app.get('/health', healthHandler);
+    app.get('/api/health', healthHandler);
 
     // Robot State (Current selected or default robot)
     app.get('/api/robot/state', (req, res) => {
@@ -66,7 +81,7 @@ async function startServer() {
       res.json(robotService.getState());
     });
 
-    // Control Robot Mode (WEB / RC / AUTO / DEMO)
+      // Control Robot Mode (WEB / RC / AUTO / DEMO)
     app.post('/api/robot/mode', (req, res) => {
       const { mode, robotId } = req.body;
       if (!mode || !['WEB', 'RC', 'AUTO', 'DEMO'].includes(mode)) {
@@ -77,9 +92,12 @@ async function startServer() {
       dev.controlMode = mode;
       dev.isDemo = mode === 'DEMO';
 
+      const modePayload = { robotId: targetId, controlMode: mode, isDemo: dev.isDemo, timestamp: new Date().toISOString() };
       const state = robotService.setMode(mode);
-      io.emit('device:mode', { robotId: targetId, controlMode: mode, isDemo: dev.isDemo, timestamp: new Date().toISOString() });
+      io.emit('device:mode', modePayload);
       io.emit('robot:state', state);
+      // Bridge to internal rpi5Manager
+      rpi5Manager.handleModeChange(modePayload);
       res.json({ success: true, state, device: dev });
     });
 
@@ -103,7 +121,7 @@ async function startServer() {
       if (dev.safety?.emergencyStop) return res.status(409).json({ error: 'EMERGENCY_STOP_ACTIVE' });
 
       // Generate unique commandId for tracking physical device ack
-      const commandId = `CMD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      const commandId = `CMD-${crypto.randomUUID()}`;
 
       // Broadcast command to hardware listeners via Socket.IO
       io.emit('device:command_out', {
@@ -310,27 +328,8 @@ async function startServer() {
     });
 
     // ----------------------------------------------------
-    // SIMULATOR / LEGACY EVENT DISPATCH
+    // LIVE DEVICE & AI EVENT DISPATCH
     // ----------------------------------------------------
-
-    mockRobot.on('telemetry', (telemetry) => {
-      // If no live physical telemetry was received in the last 3s, send simulator telemetry
-      const primaryDev = deviceService.getDeviceState('PRAHARI-01');
-      if (primaryDev.status !== 'ONLINE') {
-        io.emit('robot:telemetry', telemetry);
-      }
-    });
-
-    mockRobot.on('state', (state) => {
-      const primaryDev = deviceService.getDeviceState('PRAHARI-01');
-      if (primaryDev.status !== 'ONLINE') {
-        io.emit('robot:state', state);
-      }
-    });
-
-    mockRobot.on('event', (evt) => {
-      io.emit('system:event', evt);
-    });
 
     aiService.on('detection', (det) => {
       io.emit('ai:detection', det);
@@ -350,13 +349,13 @@ async function startServer() {
       // Send immediate initial sync
       socket.emit('robot:state', deviceService.getDeviceState('PRAHARI-01'));
       socket.emit('devices:list', deviceService.getAllDevices());
-      socket.emit('ai:status', aiInferenceService.getStatus());
-      socket.emit('ai:ambulance_state', { activeAmbulance: aiInferenceService.getStatus().activeAmbulance || aiService.getActiveAmbulance() });
+      socket.emit('ai:status', inferenceService.getStatus());
+      socket.emit('ai:ambulance_state', { activeAmbulance: inferenceService.getStatus().activeAmbulance || aiService.getActiveAmbulance() });
 
       // Real-time camera stream frame processing via WebSocket
       socket.on('camera:frame', async (data) => {
         try {
-          const result = await aiInferenceService.processFrame(data, io);
+          const result = await inferenceService.processFrame(data, io);
           socket.emit('ai:frame_result', result);
         } catch (err) {
           socket.emit('ai:frame_error', { error: err.message });
@@ -371,14 +370,17 @@ async function startServer() {
         }
         if (dev.safety?.emergencyStop) return socket.emit('control:error', { error: 'EMERGENCY_STOP_ACTIVE' });
 
-        const commandId = `CMD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-        io.emit('device:command_out', {
+        const commandId = `CMD-${crypto.randomUUID()}`;
+        const commandPayload = {
           commandId,
           robotId: targetId,
           command: data.command,
           speed: data.speed || 50,
           timestamp: new Date().toISOString(),
-        });
+        };
+        io.emit('device:command_out', commandPayload);
+        // Bridge to internal rpi5Manager
+        rpi5Manager.handleCommand(commandPayload);
         robotService.sendControl(data.command, data.speed);
       });
 
@@ -403,8 +405,29 @@ async function startServer() {
       });
     });
 
-    server.listen(port, hostname, () => {
-      console.log(`PRAHARI backend running on http://${hostname}:${port}`);
+    // Global Express Error Handler — must be last app.use()
+    // Catches errors from next(error) in any route/middleware
+    app.use((err, req, res, _next) => {
+      const status = err.status || err.statusCode || 500;
+      console.error(`[NETRAH] Unhandled route error [${status}]:`, err.message);
+      res.status(status).json({
+        error: err.code || 'INTERNAL_ERROR',
+        message: err.message || 'An unexpected error occurred',
+      });
+    });
+
+    server.listen(port, hostname, async () => {
+      console.log(`[NETRAH] Starting backend...`);
+      console.log(
+        db.getStatus().connected
+          ? `[NETRAH] Database connected (MongoDB)`
+          : `[NETRAH] Database in-memory fallback active (MongoDB offline/unreachable)`
+      );
+      console.log(`[NETRAH] AI perception subsystem initialized`);
+      await rpi5Manager.init();
+      console.log(`[NETRAH] RPi5 subsystem initialized (${rpi5Manager.getStatus().mode})`);
+      console.log(`[NETRAH] WebSocket initialized`);
+      console.log(`[NETRAH] Express server listening on http://${hostname}:${port}`);
     });
   } catch (error) {
     console.error('Fatal backend error:', error);

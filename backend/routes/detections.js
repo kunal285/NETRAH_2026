@@ -10,7 +10,13 @@ const integer = (value, fallback, max) => Math.min(max, Math.max(1, Number.parse
 
 async function listDetections(req, res, next) {
   try {
-    if (!db.getStatus().connected) return next('route');
+    if (!db.getStatus().connected) {
+      return res.status(503).json({
+        success: false,
+        error: 'DATABASE_UNAVAILABLE',
+        message: 'MongoDB database is currently unreachable. Connect to MongoDB to query detections.',
+      });
+    }
     const page = integer(req.query.page, 1, 100000);
     const limit = integer(req.query.limit, 10, 100);
     const filter = {};
@@ -22,7 +28,7 @@ async function listDetections(req, res, next) {
     if (req.query.search) filter.$or = [{ result: { $regex: req.query.search, $options: 'i' } }, { 'details.plateNumber': { $regex: req.query.search, $options: 'i' } }, { 'details.vehicleType': { $regex: req.query.search, $options: 'i' } }];
     const sort = req.query.sortBy === 'time_asc' ? { timestamp: 1 } : req.query.sortBy === 'confidence_desc' ? { confidence: -1 } : { timestamp: -1 };
     const [data, total] = await Promise.all([Detection.find(filter).sort(sort).skip((page - 1) * limit).limit(limit).lean(), Detection.countDocuments(filter)]);
-    res.json({ data, total, page, limit, totalPages: Math.ceil(total / limit) || 1 });
+    res.json({ success: true, data, total, page, limit, totalPages: Math.ceil(total / limit) || 1 });
   } catch (error) { next(error); }
 }
 

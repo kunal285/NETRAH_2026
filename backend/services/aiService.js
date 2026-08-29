@@ -1,7 +1,7 @@
 import { detectionService } from './detectionService.js';
 import { EventEmitter } from 'events';
 import { s3Storage } from '../storage/s3Storage.js';
-import { generateS3Key } from '../routes/storage.js';
+import { generateS3Key } from '../utils/storageUtils.js';
 import { StoredImage } from '../models/StoredImage.js';
 import { db } from '../config/db.js';
 import crypto from 'crypto';
@@ -82,7 +82,7 @@ class AIService extends EventEmitter {
           timestamp: now,
           type: 'ambulance',
           result: 'Emergency 108 Ambulance Approaching',
-          confidence: +(0.92 + Math.random() * 0.07).toFixed(2),
+          confidence: 0.95,
           camera: 'front_1080p',
           snapshotUrl,
           details: {
@@ -106,7 +106,8 @@ class AIService extends EventEmitter {
           { plate: 'UP32EF5511', state: 'Uttar Pradesh' },
           { plate: 'HR26DK7744', state: 'Haryana' },
         ];
-        const randomPlate = plates[Math.floor(Math.random() * plates.length)];
+        const plateIndex = (this._plateCounter = ((this._plateCounter || 0) + 1) % plates.length);
+        const selectedPlate = plates[plateIndex];
 
         const storedImage = await this._uploadSyntheticImage('number plate', robotId);
         const snapshotUrl = storedImage ? storedImage.imageUrl : null;
@@ -116,13 +117,13 @@ class AIService extends EventEmitter {
           id: `anpr-${Date.now()}`,
           timestamp: now,
           type: 'anpr',
-          result: `Plate: ${randomPlate.plate} (${randomPlate.state})`,
-          confidence: +(0.91 + Math.random() * 0.08).toFixed(2),
+          result: `Plate: ${selectedPlate.plate} (${selectedPlate.state})`,
+          confidence: 0.94,
           camera: 'front_1080p',
           snapshotUrl,
           details: {
-            plateNumber: randomPlate.plate,
-            plateState: randomPlate.state,
+            plateNumber: selectedPlate.plate,
+            plateState: selectedPlate.state,
             vehicleType: 'SEDAN',
             bbox: [22, 45, 30, 22],
             snapshotUrl,
@@ -135,7 +136,8 @@ class AIService extends EventEmitter {
 
       case 'vehicle': {
         const types = ['CAR', 'SUV', 'BUS', 'TRUCK', 'MOTORCYCLE'];
-        const chosen = types[Math.floor(Math.random() * types.length)];
+        const typeIndex = (this._typeCounter = ((this._typeCounter || 0) + 1) % types.length);
+        const chosen = types[typeIndex];
         
         const storedImage = await this._uploadSyntheticImage('uploads', robotId);
         const snapshotUrl = storedImage ? storedImage.imageUrl : null;
@@ -145,7 +147,7 @@ class AIService extends EventEmitter {
           timestamp: now,
           type: 'vehicle',
           result: `Classified ${chosen} in Lane 1`,
-          confidence: +(0.85 + Math.random() * 0.12).toFixed(2),
+          confidence: 0.90,
           camera: 'front_1080p',
           snapshotUrl,
           details: {
@@ -168,7 +170,7 @@ class AIService extends EventEmitter {
           timestamp: now,
           type: 'face',
           result: 'Traffic Constable / Pedestrian',
-          confidence: +(0.88 + Math.random() * 0.10).toFixed(2),
+          confidence: 0.91,
           camera: 'front_1080p',
           snapshotUrl,
           details: {

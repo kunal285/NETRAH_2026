@@ -1,30 +1,37 @@
 import mongoose from 'mongoose';
 import dns from 'dns';
+import { User } from '../models/User.js';
+
+// Configure public DNS resolvers to handle SRV record lookups reliably on Windows/Node.js
+try {
+  dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']);
+} catch (dnsErr) {
+  console.warn('[MongoDB] Custom DNS server initialization notice:', dnsErr.message);
+}
 
 class Database {
   constructor() {
-    this.isConnected = false;
     this.isConnecting = false;
-    this.dnsFallbackApplied = false;
-    this.retryTimer = null;
     this.shutdownRegistered = false;
+  }
+
+  get isConnected() {
+    return mongoose.connection.readyState === 1;
   }
 
   async connect(uri) {
     const mongoUri = uri || process.env.MONGODB_URI;
 
     if (!mongoUri) {
-      console.warn('[MongoDB] MONGODB_URI is not defined. Running in in-memory / non-persistent hybrid mode.');
+      console.error('[MongoDB] MONGODB_URI is not defined in environment variables.');
       return false;
     }
 
     if (this.isConnected) {
-      console.log('[MongoDB] Already connected.');
       return true;
     }
 
     if (this.isConnecting) {
-      console.log('[MongoDB] Connection already in progress...');
       return false;
     }
 
@@ -35,32 +42,29 @@ class Database {
 
       const options = {
         maxPoolSize: 10,
-        serverSelectionTimeoutMS: 5000,
+        serverSelectionTimeoutMS: 8000,
         socketTimeoutMS: 45000,
       };
 
       await mongoose.connect(mongoUri, options);
-
-      this.isConnected = true;
       this.isConnecting = false;
       console.log('[MongoDB] Successfully connected to MongoDB database.');
 
+      // Ensure default admin operator account exists in MongoDB
+      await this.ensureAdminUser();
+
       mongoose.connection.on('error', (err) => {
         console.error('[MongoDB] Connection error:', err.message);
-        this.isConnected = false;
       });
 
       mongoose.connection.on('disconnected', () => {
-        console.warn('[MongoDB] Disconnected from MongoDB. Reconnect will be attempted automatically.');
-        this.isConnected = false;
+        console.warn('[MongoDB] Disconnected from MongoDB.');
       });
 
       mongoose.connection.on('reconnected', () => {
         console.log('[MongoDB] Reconnected to MongoDB successfully.');
-        this.isConnected = true;
       });
 
-      // Handle graceful process shutdown
       if (!this.shutdownRegistered) {
         process.on('SIGINT', this.handleShutdown.bind(this));
         process.on('SIGTERM', this.handleShutdown.bind(this));
@@ -70,48 +74,54 @@ class Database {
       return true;
     } catch (error) {
       this.isConnecting = false;
-      this.isConnected = false;
-      console.error('[MongoDB] Failed to connect to MongoDB:', error.message);
-
-      // Fallback to public DNS servers if Node's c-ares DNS resolver fails with querySrv ECONNREFUSED
-      if ((error.code === 'ECONNREFUSED' || error.message.includes('querySrv')) && !this.dnsFallbackApplied) {
-        this.dnsFallbackApplied = true;
-        console.log('[MongoDB] Applying public DNS server fallback (8.8.8.8, 1.1.1.1) to resolve SRV query issue...');
-        try {
-          dns.setServers(['8.8.8.8', '1.1.1.1']);
-        } catch (dnsErr) {
-          console.error('[MongoDB] Failed to set DNS servers:', dnsErr.message);
-        }
-        return this.connect(mongoUri);
-      }
-
-      console.warn('[MongoDB] The application will continue running with in-memory caching fallback and retry MongoDB connection.');
-      if (!this.retryTimer) {
-        this.retryTimer = setTimeout(() => {
-          this.retryTimer = null;
-          this.connect(mongoUri).catch(() => {});
-        }, 10000);
-      }
+      console.error('[MongoDB] Connection failed:', error.message);
       return false;
     }
   }
 
+  async ensureAdminUser() {
+    try {
+      const adminCount = await User.countDocuments({ username: 'admin' });
+      if (adminCount === 0) {
+        const passwordHash = await User.hashPassword('admin123');
+        await User.create({
+          username: 'admin',
+          email: 'admin@prahari.local',
+          passwordHash,
+          fullName: 'Command Officer',
+          role: 'admin',
+          isActive: true,
+        });
+        console.log('[MongoDB] Default administrator account initialized in MongoDB.');
+      }
+    } catch (err) {
+      console.warn('[MongoDB] Admin user verification notice:', err.message);
+    }
+  }
+
   async handleShutdown() {
-    if (this.retryTimer) clearTimeout(this.retryTimer);
     if (this.isConnected) {
       try {
         await mongoose.connection.close(false);
-        console.log('[MongoDB] Connection closed through app graceful shutdown.');
+        console.log('[MongoDB] Connection closed through graceful shutdown.');
       } catch (err) {
-        console.error('[MongoDB] Error closing database connection:', err);
+        console.error('[MongoDB] Error closing database connection:', err.message);
       }
     }
   }
 
   getStatus() {
+    const readyState = mongoose.connection.readyState;
+    const stateMap = {
+      0: 'disconnected',
+      1: 'connected',
+      2: 'connecting',
+      3: 'disconnecting',
+    };
     return {
-      connected: this.isConnected,
-      readyState: mongoose.connection.readyState,
+      connected: readyState === 1,
+      state: stateMap[readyState] || 'unknown',
+      readyState,
       dbName: mongoose.connection.name || null,
       host: mongoose.connection.host || null,
     };

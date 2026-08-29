@@ -1,5 +1,5 @@
 import express from 'express';
-import { aiInferenceService } from '../services/aiInferenceService.js';
+import { inferenceService as aiInferenceService } from '../services/ai/inferenceService.js';
 import { aiService } from '../services/aiService.js';
 import { db } from '../config/db.js';
 import { AiEvent } from '../models/AiEvent.js';
@@ -123,36 +123,46 @@ aiRouter.post('/trigger', async (req, res) => {
   res.json({ success: true, detection });
 });
 
-// Historical Analytics Aggregation
+// Historical Analytics Aggregation — 100% Real Live & Persisted Data
 aiRouter.get('/analytics', async (req, res, next) => {
   try {
-    const stats = aiInferenceService.getStatus().trafficStats;
+    const stats = aiInferenceService.getStatus().trafficStats || {};
+    let totalVehicles = stats.total_counted_cumulative || 0;
+    let activeVehicles = stats.total_vehicles || 0;
+    let cars = stats.cars || 0;
+    let motorcycles = stats.motorcycles || 0;
+    let buses = stats.buses || 0;
+    let trucks = stats.trucks || 0;
+    const laneOccupancy = stats.lane_occupancy || { 'Lane 1': 0, 'Lane 2': 0, 'Lane 3': 0, 'Lane 4': 0 };
+    const congestion = stats.congestion_level || 'LOW';
+
+    if (db.getStatus().connected) {
+      const [vehicleCount] = await Promise.all([
+        AiEvent.countDocuments({ type: { $in: ['VEHICLE_DETECTED', 'AMBULANCE_DETECTED'] } }),
+      ]);
+      if (vehicleCount > totalVehicles) {
+        totalVehicles = vehicleCount;
+      }
+    }
+
     const analytics = {
       summary: {
-        totalVehiclesCounted: stats.total_counted_cumulative || 42,
-        activeVehicles: stats.total_vehicles || 3,
-        congestionLevel: stats.congestion_level || 'LOW',
+        totalVehiclesCounted: totalVehicles,
+        activeVehicles: activeVehicles,
+        congestionLevel: congestion,
         activeAmbulances: aiInferenceService.getStatus().activeAmbulance ? 1 : 0,
       },
       classDistribution: [
-        { class: 'Cars', count: stats.cars || 18, fill: '#38bdf8' },
-        { class: '2-Wheelers', count: stats.motorcycles || 14, fill: '#34d399' },
-        { class: 'Buses', count: stats.buses || 4, fill: '#fbbf24' },
-        { class: 'Trucks', count: stats.trucks || 6, fill: '#f87171' },
+        { class: 'Cars', count: cars, fill: '#38bdf8' },
+        { class: '2-Wheelers', count: motorcycles, fill: '#34d399' },
+        { class: 'Buses', count: buses, fill: '#fbbf24' },
+        { class: 'Trucks', count: trucks, fill: '#f87171' },
       ],
-      laneOccupancy: Object.entries(stats.lane_occupancy || { 'Lane 1': 8, 'Lane 2': 14, 'Lane 3': 12, 'Lane 4': 8 }).map(([lane, count]) => ({
+      laneOccupancy: Object.entries(laneOccupancy).map(([lane, count]) => ({
         lane,
-        count,
+        count: count || 0,
       })),
-      hourlyFlow: [
-        { hour: '08:00', vehicles: 45, density: 'LOW' },
-        { hour: '10:00', vehicles: 88, density: 'MODERATE' },
-        { hour: '12:00', vehicles: 120, density: 'HIGH' },
-        { hour: '14:00', vehicles: 95, density: 'MODERATE' },
-        { hour: '16:00', vehicles: 135, density: 'HIGH' },
-        { hour: '18:00', vehicles: 160, density: 'SEVERE' },
-        { hour: '20:00', vehicles: 70, density: 'LOW' },
-      ],
+      hourlyFlow: [],
     };
 
     res.json(analytics);

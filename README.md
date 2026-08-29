@@ -62,34 +62,14 @@ The `backend/` directory contains the **Express and Socket.IO server**.
 It handles:
 
 * REST APIs
-* Authentication
-* Real-time communication
-* Robot services
-* Telemetry
-* Alerts
-* Database persistence
-* Communication with the AI service
-
-### AI Service
-
-The `ai-service/` directory contains the **Python AI service**.
-
-It handles detection and inference tasks such as:
-
-* Vehicle detection
-* Number-plate detection
-* Ambulance detection
-* Pedestrian detection
-* Gesture detection
-* Audio detection
-* General object/frame detection
-
-### RPi5 Bridge
-
-The `rpi5-bridge/` directory contains the Raspberry Pi 5 daemon installed on the
-physical robot. It reads sensors, controls motors, and exchanges telemetry and
-commands with the backend through HTTP and Socket.IO. It is installed directly
-on the robot, not on the web host.
+* Authentication & JWT sessions
+* Real-time communication (Socket.IO)
+* Robot teleoperation & safety interlocks
+* Telemetry & sensor processing
+* Emergency ambulance green-corridor management
+* Database persistence & S3 image storage
+* Integrated AI Multi-Modal Perception Engine (`services/ai/`)
+* Integrated Raspberry Pi 5 Hardware/Simulation Adapter (`services/rpi5/`)
 
 ---
 
@@ -100,24 +80,16 @@ PRAHARI/
 │
 ├── frontend/
 │   ├── Next.js dashboard
-│   └── Operator controls
+│   ├── Tailwind CSS + Lucide Icons
+│   └── Operator controls & Vision suites
 │
 ├── backend/
-│   ├── Express API
-│   ├── Socket.IO server
-│   ├── Authentication
-│   ├── Database
-│   └── Robot services
-│
-├── ai-service/
-│   ├── FastAPI server
-│   ├── AI models
-│   └── Detection services
-│
-├── rpi5-bridge/
-│   ├── Raspberry Pi 5 hardware daemon
-│   ├── Motor and sensor drivers
-│   └── systemd service
+│   ├── Express API & Socket.IO server
+│   ├── services/ai/ (Multi-modal vision, ANPR, YOLO, Siren FFT)
+│   ├── services/rpi5/ (Hardware / Simulation bridge)
+│   ├── Authentication & Middleware
+│   ├── Database & S3 Storage
+│   └── Simulator & Safety services
 │
 └── package.json
 ```

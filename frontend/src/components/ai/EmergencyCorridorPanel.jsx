@@ -82,7 +82,7 @@ export const EmergencyCorridorPanel = () => {
             </span>
           </div>
           <div className="text-xl font-black text-slate-900">
-            {activeAmbulance ? `${Math.round((activeAmbulance.confidence || 0.95) * 100)}% Confidence` : 'No Visual Match'}
+            {activeAmbulance ? (activeAmbulance.confidence != null ? `${Math.round(activeAmbulance.confidence * 100)}% Confidence` : 'Ambulance Detected') : 'No Visual Match'}
           </div>
           <div className="text-[11px] text-slate-500">
             Target: <strong>{activeAmbulance?.objectClass || 'None'}</strong> • Location: <strong>Lane 1 (Northbound)</strong>

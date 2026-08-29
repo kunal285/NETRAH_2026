@@ -15,7 +15,8 @@ import {
 export const TrafficDensityPanel = () => {
   const { trafficMetrics } = useRobot();
 
-  const densityPercent = Math.min(100, Math.round(((trafficMetrics.totalVehicles || 8) / 25) * 100));
+  const total = trafficMetrics.total_vehicles || trafficMetrics.totalVehicles || 0;
+  const densityPercent = Math.min(100, Math.round((total / 25) * 100));
 
   const getDensityBadge = (density = 'LOW') => {
     if (density === 'HIGH' || density === 'CONGESTED') {

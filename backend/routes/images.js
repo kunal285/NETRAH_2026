@@ -3,7 +3,7 @@ import multer from 'multer';
 import crypto from 'crypto';
 import { StoredImage } from '../models/StoredImage.js';
 import { s3Storage } from '../storage/s3Storage.js';
-import { generateS3Key } from './storage.js';
+import { generateS3Key } from '../utils/storageUtils.js';
 import { db } from '../config/db.js';
 
 const inMemoryImages = new Map();

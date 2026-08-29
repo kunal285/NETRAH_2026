@@ -39,7 +39,7 @@ export const LiveDataDebugModal = () => {
   const fetchStats = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:4000/api/device/debug/stats').then((r) => r.json());
+      const res = await fetch('/api/device/debug/stats').then((r) => r.json());
       if (res.success) setStats(res.stats);
     } catch (e) {
       console.warn('Failed to load debug stats', e);
@@ -201,7 +201,7 @@ export const LiveDataDebugModal = () => {
                     ? stats.rawTelemetryHistory[stats.rawTelemetryHistory.length - 1]
                     : {
                         message: 'No live telemetry packet received yet. Send POST to /api/device/telemetry to ingest real device data.',
-                        sampleEndpoint: 'http://localhost:4000/api/device/telemetry',
+                        sampleEndpoint: '/api/device/telemetry',
                         samplePayload: {
                           robotId: selectedRobotId,
                           batteryVoltage: 37.8,

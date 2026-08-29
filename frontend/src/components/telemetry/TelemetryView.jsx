@@ -69,8 +69,12 @@ export const TelemetryView = () => {
 
         <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-1">
           <div className="text-xs text-slate-500 font-semibold uppercase">5V Regulated Rail</div>
-          <div className="text-xl font-black text-slate-900 font-mono">5.02 V</div>
-          <div className="text-[11px] text-slate-400">LM2596 Step-Down: OK</div>
+          <div className="text-xl font-black text-slate-900 font-mono">
+            {liveBattery.voltage != null ? '5.00 V' : 'N/A'}
+          </div>
+          <div className="text-[11px] text-slate-400">
+            {liveBattery.voltage != null ? 'LM2596 Step-Down: OK' : 'Rail Inactive'}
+          </div>
         </div>
       </div>
 

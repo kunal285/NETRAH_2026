@@ -27,7 +27,7 @@ function fft(re, im) {
   }
 }
 
-export class AudioSirenDetector {
+export class AudioProcessor {
   constructor() {
     this.minSirenFreq = 400;
     this.maxSirenFreq = 1500;
@@ -83,7 +83,7 @@ export class AudioSirenDetector {
       // Check if peak frequency is in target siren band
       const inSirenBand = peakFreq >= this.minSirenFreq && peakFreq <= this.maxSirenFreq;
       const sirenProb = inSirenBand && rms > 0.05
-        ? Number((0.85 + Math.random() * 0.07).toFixed(2))
+        ? Number(Math.min(0.98, Math.max(0.70, 0.70 + Math.min(0.25, rms * 2))).toFixed(2))
         : 0.05;
 
       return {

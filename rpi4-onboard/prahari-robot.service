@@ -1,0 +1,22 @@
+[Unit]
+Description=PRAHARI Raspberry Pi 4 Robot Onboard Controller Daemon
+After=network.target pigpiod.service
+Wants=pigpiod.service
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/prahari-traffic-police-robot-command-center/rpi4-onboard
+ExecStart=/usr/bin/python3 /home/pi/prahari-traffic-police-robot-command-center/rpi4-onboard/main.py
+Restart=always
+RestartSec=3
+Environment=ROBOT_ID=PRAHARI-01
+Environment=BACKEND_HOST=127.0.0.1
+Environment=BACKEND_PORT=4000
+Environment=DEVICE_SECRET_TOKEN=PRAHARI_SECURE_TOKEN_2026
+
+# Safety: Ensure GPIO and pigpiod permissions
+AmbientCapabilities=CAP_SYS_RAWIO
+
+[Install]
+WantedBy=multi-user.target
