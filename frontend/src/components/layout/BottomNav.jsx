@@ -31,8 +31,11 @@ export const BottomNav = () => {
     <>
       <nav
         id="mobile-bottom-nav"
-        className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/90 px-2 py-1.5 flex items-center justify-around font-sans shadow-lg select-none"
-        style={{ paddingBottom: 'calc(0.375rem + var(--safe-area-inset-bottom))' }}
+        className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/90 px-1 py-1 flex items-center justify-around font-sans shadow-lg select-none w-full max-w-full overflow-hidden"
+        style={{
+          paddingBottom: 'calc(0.25rem + env(safe-area-inset-bottom, 0px))',
+          minHeight: '64px',
+        }}
       >
         {mainTabs.map((tab) => {
           const Icon = tab.icon;
@@ -47,14 +50,14 @@ export const BottomNav = () => {
               id={`bottom-nav-${tab.id}`}
               href={tab.href}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 min-h-[48px] flex flex-col items-center justify-center gap-1 py-1 px-1 rounded-xl transition cursor-pointer ${
+              className={`flex-1 min-w-0 min-h-[44px] flex flex-col items-center justify-center gap-0.5 py-1 px-0.5 rounded-xl transition cursor-pointer text-center ${
                 isActive
-                  ? 'text-emerald-700 font-extrabold bg-emerald-50/70 shadow-xs'
+                  ? 'text-emerald-800 font-extrabold bg-emerald-50/90 border border-emerald-200/60 shadow-2xs'
                   : 'text-slate-500 hover:text-slate-900 active:bg-slate-100'
               }`}
             >
-              <Icon className={`w-5 h-5 transition-transform ${isActive ? 'text-emerald-600 scale-110' : 'text-slate-400'}`} />
-              <span className="text-[10px] tracking-tight font-bold">{tab.label}</span>
+              <Icon className={`w-4.5 h-4.5 transition-transform shrink-0 ${isActive ? 'text-emerald-600 scale-105' : 'text-slate-400'}`} />
+              <span className="text-[10px] tracking-tight font-bold truncate max-w-full">{tab.label}</span>
             </Link>
           );
         })}
@@ -63,11 +66,11 @@ export const BottomNav = () => {
         <button
           id="bottom-nav-more"
           onClick={() => setIsMoreOpen(true)}
-          className="min-h-[48px] px-2 flex flex-col items-center justify-center gap-1 py-1 rounded-xl text-slate-400 hover:text-slate-900 active:bg-slate-100 cursor-pointer"
-          title="More Diagnostics & Logs"
+          className="flex-1 min-w-0 min-h-[44px] flex flex-col items-center justify-center gap-0.5 py-1 px-0.5 rounded-xl text-slate-500 hover:text-slate-900 active:bg-slate-100 cursor-pointer text-center"
+          title="More Diagnostics & Modules"
         >
-          <Menu className="w-5 h-5 text-slate-400" />
-          <span className="text-[9px] tracking-tight font-medium">MORE</span>
+          <Menu className="w-4.5 h-4.5 text-slate-400 shrink-0" />
+          <span className="text-[10px] tracking-tight font-bold truncate max-w-full">MORE</span>
         </button>
       </nav>
 

@@ -11,10 +11,18 @@ import {
   Server,
   Settings,
   X,
+  Radio,
 } from 'lucide-react';
 
 export const MoreMenuModal = ({ isOpen, onClose }) => {
-  const { activeTab, setActiveTab } = useRobot();
+  const {
+    activeTab,
+    setActiveTab,
+    controlMode,
+    changeControlMode,
+    setIsDebugModalOpen,
+    socketConnected,
+  } = useRobot();
 
   if (!isOpen) return null;
 
@@ -37,20 +45,67 @@ export const MoreMenuModal = ({ isOpen, onClose }) => {
       id="more-menu-modal"
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/40 backdrop-blur-xs animate-fade-in font-sans"
     >
-      <div className="bg-white border-t sm:border border-slate-200 rounded-t-3xl sm:rounded-2xl w-full max-w-lg p-5 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
+      <div
+        className="bg-white border-t sm:border border-slate-200 rounded-t-3xl sm:rounded-2xl w-full max-w-lg p-5 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto"
+        style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}
+      >
         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
           <div className="text-sm font-bold text-slate-900 uppercase tracking-wider">
-            ROBOTICS MODULES
+            ROBOTICS MODULES & CONTROLS
           </div>
           <button
             id="btn-close-more-menu"
             onClick={onClose}
-            className="p-1.5 rounded-lg bg-slate-100 text-slate-500 hover:text-slate-900 cursor-pointer transition"
+            className="p-1.5 rounded-lg bg-slate-100 text-slate-500 hover:text-slate-900 cursor-pointer transition min-h-[36px] min-w-[36px] flex items-center justify-center"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
+        {/* Quick Mobile Controls Section */}
+        <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
+          <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+            <span>DRIVE CONTROL MODE</span>
+            <span className="text-[10px] text-emerald-700 font-mono bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+              CURRENT: {controlMode}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-3 gap-1.5">
+            {['WEB', 'RC', 'AUTO'].map((mode) => (
+              <button
+                key={mode}
+                onClick={() => changeControlMode(mode)}
+                className={`py-2 rounded-lg text-xs font-bold transition cursor-pointer min-h-[40px] flex items-center justify-center ${
+                  controlMode === mode
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                {mode}
+              </button>
+            ))}
+          </div>
+
+          <div className="pt-1.5 flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-xs text-slate-600 font-mono">
+              <span className={`w-2 h-2 rounded-full ${socketConnected ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
+              <span>{socketConnected ? 'WebSocket Live (32ms)' : 'Connecting to Core...'}</span>
+            </div>
+            <button
+              onClick={() => {
+                setIsDebugModalOpen(true);
+                onClose();
+              }}
+              className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-bold flex items-center gap-1 cursor-pointer transition shadow-2xs"
+            >
+              <Activity className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Packet Monitor</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Navigation Grid */}
         <div className="grid grid-cols-1 gap-2">
           {extraTabs.map((item) => {
             const Icon = item.icon;

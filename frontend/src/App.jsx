@@ -5,7 +5,9 @@ import { Header } from './components/layout/Header.jsx';
 import { Sidebar } from './components/layout/Sidebar.jsx';
 import { BottomNav } from './components/layout/BottomNav.jsx';
 import { EmergencyBanner } from './components/common/EmergencyBanner.jsx';
+import { FloatingEmergencyStop } from './components/common/FloatingEmergencyStop.jsx';
 import { AmbulanceAlertModal } from './components/common/AmbulanceAlertModal.jsx';
+import { LiveDataDebugModal } from './components/common/LiveDataDebugModal.jsx';
 import { PwaInstallPrompt } from './components/common/PwaInstallPrompt.jsx';
 
 import { DashboardView } from './components/dashboard/DashboardView.jsx';
@@ -50,12 +52,14 @@ const MainContent = () => {
   };
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 bg-slate-950 text-slate-100 overflow-y-auto pb-20 lg:pb-8">
+    <div className="flex-1 flex flex-col min-w-0 bg-slate-50 text-slate-900 overflow-y-auto pb-32 sm:pb-24 lg:pb-8">
       <EmergencyBanner />
-      <main className="flex-1 p-4 md:p-6 lg:p-8 max-w-7xl w-full mx-auto animate-fade-in">
+      <main className="flex-1 p-3 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto animate-fade-in space-y-4 sm:space-y-6">
         {renderActiveView()}
       </main>
+      <FloatingEmergencyStop />
       <AmbulanceAlertModal />
+      <LiveDataDebugModal />
       <PwaInstallPrompt />
     </div>
   );
@@ -65,7 +69,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <RobotProvider>
-        <div id="prahari-app-root" className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans antialiased selection:bg-sky-500 selection:text-white">
+        <div id="prahari-app-root" className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans antialiased selection:bg-emerald-600 selection:text-white">
           <Header />
           <div className="flex-1 flex overflow-hidden">
             <Sidebar />
