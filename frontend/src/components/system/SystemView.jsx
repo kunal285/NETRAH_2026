@@ -20,6 +20,7 @@ import {
   AlertCircle,
   Clock,
   Zap,
+  Radio,
 } from 'lucide-react';
 
 export const SystemView = () => {
