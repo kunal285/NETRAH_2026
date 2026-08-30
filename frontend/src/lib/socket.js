@@ -3,6 +3,8 @@ import { io } from 'socket.io-client';
 class SocketClient {
   constructor() {
     this.socket = null;
+    this.latencyMs = 0;
+    this.pingInterval = null;
     this.listeners = new Map();
   }
 
@@ -12,7 +14,6 @@ class SocketClient {
 
     let defaultUrl = '';
     if (typeof window !== 'undefined') {
-      // If running on port 3000 (Next.js default dev port), default socket target to port 4000 (backend)
       if (window.location.port === '3000') {
         defaultUrl = `${window.location.protocol}//${window.location.hostname}:4000`;
       } else {
@@ -24,23 +25,49 @@ class SocketClient {
 
     this.socket = io(targetUrl, {
       transports: ['websocket', 'polling'],
-      reconnectionAttempts: 10,
+      reconnection: true,
+      reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
+      reconnectionDelayMax: 10000,
+      randomizationFactor: 0.2,
+      timeout: 5000,
     });
 
     this.socket.on('connect', () => {
       console.log('[Socket] Connected to PRAHARI Command Engine, ID:', this.socket?.id);
+      this._startLatencyCheck();
     });
 
     this.socket.on('disconnect', (reason) => {
       console.warn('[Socket] Disconnected:', reason);
+      this._stopLatencyCheck();
     });
 
     this.socket.on('connect_error', (err) => {
-      console.error('[Socket] Connection Error:', err);
+      console.error('[Socket] Connection Error:', err.message);
     });
 
     return this.socket;
+  }
+
+  _startLatencyCheck() {
+    if (this.pingInterval) clearInterval(this.pingInterval);
+    this.pingInterval = setInterval(() => {
+      if (this.socket && this.socket.connected) {
+        const start = Date.now();
+        this.socket.emit('system:ping', () => {
+          this.latencyMs = Math.max(1, Date.now() - start);
+          if (this.onLatencyChange) this.onLatencyChange(this.latencyMs);
+        });
+      }
+    }, 2000);
+  }
+
+  _stopLatencyCheck() {
+    if (this.pingInterval) {
+      clearInterval(this.pingInterval);
+      this.pingInterval = null;
+    }
   }
 
   getSocket() {
@@ -51,39 +78,73 @@ class SocketClient {
   }
 
   disconnect() {
+    this._stopLatencyCheck();
     if (this.socket) {
       this.socket.disconnect();
       this.socket = null;
     }
   }
 
-  sendMove(command, speed) {
+  sendDriveVector(throttle, steering, speed = 70, robotId = 'PRAHARI-01') {
     if (this.socket && this.socket.connected) {
-      this.socket.emit('control:move', { command, speed });
+      this.socket.emit('control:drive_vector', {
+        robotId,
+        source: 'web',
+        throttle: Number(throttle),
+        steering: Number(steering),
+        speed: Number(speed),
+        timestamp: Date.now(),
+      });
     }
   }
 
-  sendStop() {
+  sendMove(command, speed = 50, robotId = 'PRAHARI-01') {
     if (this.socket && this.socket.connected) {
-      this.socket.emit('control:stop');
+      this.socket.emit('control:move', {
+        robotId,
+        command,
+        speed: Number(speed),
+        timestamp: Date.now(),
+      });
     }
   }
 
-  sendEmergencyStop(reason) {
+  sendStop(robotId = 'PRAHARI-01') {
     if (this.socket && this.socket.connected) {
-      this.socket.emit('control:estop', { reason });
+      this.socket.emit('control:stop', {
+        robotId,
+        source: 'web',
+        timestamp: Date.now(),
+      });
     }
   }
 
-  sendResetSafety() {
+  sendEmergencyStop(reason = 'Operator E-Stop', robotId = 'PRAHARI-01') {
     if (this.socket && this.socket.connected) {
-      this.socket.emit('control:reset_safety');
+      this.socket.emit('control:estop', {
+        robotId,
+        reason,
+        timestamp: Date.now(),
+      });
     }
   }
 
-  sendMode(mode) {
+  sendResetSafety(robotId = 'PRAHARI-01') {
     if (this.socket && this.socket.connected) {
-      this.socket.emit('control:mode', { mode });
+      this.socket.emit('control:reset_safety', {
+        robotId,
+        timestamp: Date.now(),
+      });
+    }
+  }
+
+  sendMode(mode, robotId = 'PRAHARI-01') {
+    if (this.socket && this.socket.connected) {
+      this.socket.emit('control:mode', {
+        robotId,
+        mode,
+        timestamp: Date.now(),
+      });
     }
   }
 }

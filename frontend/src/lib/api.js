@@ -6,8 +6,20 @@ const API_BASE = '/api';
 
 export const api = {
   // Robot Core
+  async getRobotStatus() {
+    const res = await fetch(`${API_BASE}/robot/status`);
+    if (!res.ok) throw new Error('Failed to fetch robot status');
+    return res.json();
+  },
+
+  async getRobotTelemetry() {
+    const res = await fetch(`${API_BASE}/robot/telemetry`);
+    if (!res.ok) throw new Error('Failed to fetch robot telemetry');
+    return res.json();
+  },
+
   async getRobotState() {
-    const res = await fetch(`${API_BASE}/robot/state`);
+    const res = await fetch(`${API_BASE}/robot/status`);
     if (!res.ok) throw new Error('Failed to fetch robot state');
     return res.json();
   },
@@ -22,11 +34,11 @@ export const api = {
     return res.json();
   },
 
-  async sendControl(command, speed) {
-    const res = await fetch(`${API_BASE}/robot/control`, {
+  async sendControl(command, speed, vector = null) {
+    const res = await fetch(`${API_BASE}/robot/command`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command, speed }),
+      body: JSON.stringify({ command, speed, vector }),
     });
     if (!res.ok) throw new Error('Failed to send control command');
     return res.json();
@@ -47,6 +59,17 @@ export const api = {
       method: 'POST',
     });
     if (!res.ok) throw new Error('Failed to reset safety interlocks');
+    return res.json();
+  },
+
+  // Emergency Green Corridor
+  async triggerEmergencyCorridor(payload = {}) {
+    const res = await fetch(`${API_BASE}/emergency/green-corridor`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error('Failed to trigger green corridor');
     return res.json();
   },
 

@@ -1,63 +1,109 @@
 import express from 'express';
-import mongoose from 'mongoose';
-import { Detection } from '../models/Detection.js';
-import { NumberPlate } from '../models/NumberPlate.js';
-import { persistenceService } from '../services/persistenceService.js';
-import { db } from '../config/db.js';
+import { detectionService } from '../services/detectionService.js';
+import { s3Service } from '../services/s3Service.js';
 
 export const detectionRouter = express.Router();
-const integer = (value, fallback, max) => Math.min(max, Math.max(1, Number.parseInt(value, 10) || fallback));
 
-async function listDetections(req, res, next) {
-  try {
-    if (!db.getStatus().connected) {
-      return res.status(503).json({
-        success: false,
-        error: 'DATABASE_UNAVAILABLE',
-        message: 'MongoDB database is currently unreachable. Connect to MongoDB to query detections.',
-      });
-    }
-    const page = integer(req.query.page, 1, 100000);
-    const limit = integer(req.query.limit, 10, 100);
-    const filter = {};
-    if (req.query.type && req.query.type !== 'all') filter.type = req.query.type === 'anpr' ? 'number_plate' : req.query.type;
-    if (req.query.robotId) filter.robotId = req.query.robotId;
-    if (req.query.from || req.query.to) filter.timestamp = {};
-    if (req.query.from) filter.timestamp.$gte = new Date(req.query.from);
-    if (req.query.to) filter.timestamp.$lte = new Date(req.query.to);
-    if (req.query.search) filter.$or = [{ result: { $regex: req.query.search, $options: 'i' } }, { 'details.plateNumber': { $regex: req.query.search, $options: 'i' } }, { 'details.vehicleType': { $regex: req.query.search, $options: 'i' } }];
-    const sort = req.query.sortBy === 'time_asc' ? { timestamp: 1 } : req.query.sortBy === 'confidence_desc' ? { confidence: -1 } : { timestamp: -1 };
-    const [data, total] = await Promise.all([Detection.find(filter).sort(sort).skip((page - 1) * limit).limit(limit).lean(), Detection.countDocuments(filter)]);
-    res.json({ success: true, data, total, page, limit, totalPages: Math.ceil(total / limit) || 1 });
-  } catch (error) { next(error); }
-}
-
-detectionRouter.get('/', listDetections);
-detectionRouter.get('/number-plates/history', async (req, res, next) => {
-  try {
-    const page = integer(req.query.page, 1, 100000); const limit = integer(req.query.limit, 10, 100);
-    const filter = {};
-    if (req.query.robotId) filter.robotId = req.query.robotId;
-    if (req.query.plate) filter.plateNumber = { $regex: req.query.plate, $options: 'i' };
-    if (req.query.from || req.query.to) filter.timestamp = { ...(req.query.from && { $gte: new Date(req.query.from) }), ...(req.query.to && { $lte: new Date(req.query.to) }) };
-    const [data, total] = await Promise.all([NumberPlate.find(filter).sort({ timestamp: -1 }).skip((page - 1) * limit).limit(limit).lean(), NumberPlate.countDocuments(filter)]);
-    res.json({ data, total, page, limit, totalPages: Math.ceil(total / limit) || 1 });
-  } catch (error) { next(error); }
+/**
+ * GET /api/detections/stats
+ * Real-time detection counters for dashboard
+ */
+detectionRouter.get('/stats', (req, res) => {
+  res.json({
+    success: true,
+    stats: detectionService.getStats(),
+  });
 });
+
+/**
+ * GET /api/detections
+ * Query perception detections with filtering, search, pagination
+ */
+detectionRouter.get('/', async (req, res, next) => {
+  try {
+    const result = await detectionService.getDetections(req.query);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/detections/:id
+ * Retrieve single detection record
+ */
 detectionRouter.get('/:id', async (req, res, next) => {
   try {
-    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'INVALID_MONGODB_ID' });
-    const detection = await Detection.findById(req.params.id).lean();
-    if (!detection) return res.status(404).json({ error: 'DETECTION_NOT_FOUND' });
-    res.json(detection);
-  } catch (error) { next(error); }
+    const detection = detectionService.getDetectionById(req.params.id);
+    if (!detection) {
+      return res.status(404).json({ error: 'DETECTION_NOT_FOUND', message: 'Detection not found' });
+    }
+    res.json({ success: true, data: detection });
+  } catch (error) {
+    next(error);
+  }
 });
+
+/**
+ * GET /api/detections/:id/image
+ * Serve or redirect to signed AWS S3 image URL for a detection
+ */
+detectionRouter.get('/:id/image', async (req, res, next) => {
+  try {
+    const detection = detectionService.getDetectionById(req.params.id);
+    if (!detection || !detection.imageKey) {
+      return res.status(404).json({
+        error: 'IMAGE_NOT_FOUND',
+        message: 'No image attached to this detection record',
+      });
+    }
+
+    // Generate fresh signed URL (valid for 1 hour)
+    const signedUrl = await s3Service.getDetectionImageUrl(detection.imageKey, 3600);
+    if (signedUrl && signedUrl.startsWith('http')) {
+      return res.redirect(signedUrl);
+    }
+
+    // Direct stream fallback
+    try {
+      const s3Stream = await s3Service.getObjectStream(detection.imageKey);
+      res.setHeader('Content-Type', s3Stream.ContentType || 'image/jpeg');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      s3Stream.Body.pipe(res);
+    } catch (streamErr) {
+      res.status(404).json({ error: 'IMAGE_STREAM_FAILED', message: streamErr.message });
+    }
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/detections
+ * Ingest new AI detection with optional image frame and broadcast to Socket.IO
+ */
 detectionRouter.post('/', async (req, res, next) => {
   try {
-    const detection = await persistenceService.saveDetection(req.body, req.body.robotId, Boolean(req.body.isDemo));
-    if (!detection) return res.status(503).json({ error: 'DATABASE_UNAVAILABLE' });
-    req.app.get('io').emit('robot:detection', detection);
-    req.app.get('io').emit('ai:detection', detection);
-    res.status(201).json(detection);
-  } catch (error) { next(error); }
+    const io = req.app.get('io');
+    const detection = await detectionService.processAndSaveDetection(req.body, io);
+    res.status(201).json({
+      success: true,
+      data: detection,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * DELETE /api/detections
+ * Clear all detection logs and delete associated S3 images
+ */
+detectionRouter.delete('/', async (req, res, next) => {
+  try {
+    const result = await detectionService.clearDetections();
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
 });

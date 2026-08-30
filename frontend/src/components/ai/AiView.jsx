@@ -32,18 +32,23 @@ export const AiView = () => {
 
   return (
     <div id="ai-suite-view" className="space-y-6 max-w-7xl mx-auto font-sans pb-12">
-      {/* 1. Header Banner & Calibration Action */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white border border-slate-200 rounded-2xl p-6 shadow-xs">
-        <div className="flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700 shadow-xs">
-            <BrainCircuit className="w-6 h-6" />
+      {/* 1. Header Banner & Status */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-xs">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-xs shrink-0">
+            <BrainCircuit className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
           <div>
-            <div className="text-base font-bold text-slate-900 tracking-tight">
-              AI TRAFFIC PERCEPTION & GREEN CORRIDOR SUITE
+            <div className="flex items-center gap-2">
+              <span className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
+                AI PERCEPTION
+              </span>
+              <span className="px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold">
+                🟢 AI ACTIVE
+              </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Live Edge Vision • Multi-Lane Vehicle Tracking • Indian HSRP ANPR • Dual-Modal Siren Acoustic Radar
+              Live Edge Vision • Multi-Lane Vehicle Tracking • Indian HSRP ANPR
             </p>
           </div>
         </div>
@@ -51,11 +56,50 @@ export const AiView = () => {
         <button
           id="btn-open-ai-settings"
           onClick={() => setIsSettingsOpen(true)}
-          className="px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-semibold flex items-center gap-2 cursor-pointer transition shadow-xs"
+          className="min-h-[40px] px-4 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-bold flex items-center gap-2 cursor-pointer transition shadow-xs w-full sm:w-auto justify-center"
         >
           <Sliders className="w-4 h-4 text-emerald-600" />
           <span>Calibrate AI & Lanes</span>
         </button>
+      </div>
+
+      {/* Quick AI Detection Status Summary Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+        <div className="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-1">
+          <div className="flex justify-between items-center text-slate-500 text-[10px] font-bold uppercase">
+            <span>🚗 VEHICLES</span>
+            <span className="text-emerald-700 font-bold">🟢 NORMAL</span>
+          </div>
+          <div className="text-base font-black text-slate-900 font-mono">FLOW: LOW</div>
+          <div className="text-[10px] text-slate-500">Lane 1-4 Active</div>
+        </div>
+
+        <div className="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-1">
+          <div className="flex justify-between items-center text-slate-500 text-[10px] font-bold uppercase">
+            <span>🚑 AMBULANCE</span>
+            <span className="text-emerald-700 font-bold">🟢 READY</span>
+          </div>
+          <div className="text-base font-black text-emerald-700 font-mono">STANDBY</div>
+          <div className="text-[10px] text-slate-500">Acoustic & Vision Sync</div>
+        </div>
+
+        <div className="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-1">
+          <div className="flex justify-between items-center text-slate-500 text-[10px] font-bold uppercase">
+            <span>🔠 ANPR DETECT</span>
+            <span className="text-emerald-700 font-bold">🟢 94% CONF</span>
+          </div>
+          <div className="text-base font-black text-slate-900 font-mono truncate">MH12AB1234</div>
+          <div className="text-[10px] text-slate-500">Maharashtra • Car</div>
+        </div>
+
+        <div className="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-1">
+          <div className="flex justify-between items-center text-slate-500 text-[10px] font-bold uppercase">
+            <span>👤 PEDESTRIAN</span>
+            <span className="text-emerald-700 font-bold">🟢 SAFE</span>
+          </div>
+          <div className="text-base font-black text-slate-900 font-mono">CROSSWALK CLEAR</div>
+          <div className="text-[10px] text-slate-500">Risk Score: 0.02</div>
+        </div>
       </div>
 
       {/* 2. Top Real-time Status Bar */}

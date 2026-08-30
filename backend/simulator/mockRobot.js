@@ -141,12 +141,12 @@ export class MockRobotAdapter extends EventEmitter {
     this.emit('state', this.getState());
   }
 
-  setMovement(command, speed) {
+  setMovement(command, speed, vector = null) {
     if (this.state.safety.emergencyStop) {
       return { success: false, reason: 'EMERGENCY_STOP_ACTIVE' };
     }
 
-    if (this.state.safety.obstacleInterlock && command === 'FORWARD') {
+    if (this.state.safety.obstacleInterlock && (command === 'FORWARD' || (vector && vector.throttle > 0))) {
       return { success: false, reason: 'OBSTACLE_INTERLOCK_ACTIVE' };
     }
 
@@ -155,6 +155,30 @@ export class MockRobotAdapter extends EventEmitter {
       this.config.maxSpeed
     );
     this.state.speed = appliedSpeed;
+
+    if (command === 'DRIVE_VECTOR' && vector) {
+      const throttle = Math.max(-1.0, Math.min(1.0, vector.throttle || 0));
+      const steering = Math.max(-1.0, Math.min(1.0, vector.steering || 0));
+
+      const leftNorm = Math.max(-1.0, Math.min(1.0, throttle + steering));
+      const rightNorm = Math.max(-1.0, Math.min(1.0, throttle - steering));
+
+      this.targetLeftSpeed = Math.round(leftNorm * appliedSpeed);
+      this.targetRightSpeed = Math.round(rightNorm * appliedSpeed);
+
+      if (throttle === 0 && steering === 0) {
+        this.state.movement = 'STOPPED';
+      } else if (throttle > 0.2) {
+        this.state.movement = steering < -0.2 ? 'FORWARD_LEFT' : steering > 0.2 ? 'FORWARD_RIGHT' : 'FORWARD';
+      } else if (throttle < -0.2) {
+        this.state.movement = steering < -0.2 ? 'REVERSE_LEFT' : steering > 0.2 ? 'REVERSE_RIGHT' : 'REVERSE';
+      } else {
+        this.state.movement = steering < 0 ? 'SPIN_LEFT' : 'SPIN_RIGHT';
+      }
+
+      this.emit('state', this.getState());
+      return { success: true, movement: this.state.movement, speed: appliedSpeed, leftMotor: this.targetLeftSpeed, rightMotor: this.targetRightSpeed };
+    }
 
     switch (command) {
       case 'FORWARD':
@@ -170,14 +194,14 @@ export class MockRobotAdapter extends EventEmitter {
         break;
 
       case 'LEFT':
-        // Differential Skid Turn Left: Left track reverses or slows, Right track forward
+        // Differential Skid Turn Left: Left motor reverses, Right motor forward
         this.targetLeftSpeed = -Math.round(appliedSpeed * 0.75);
         this.targetRightSpeed = appliedSpeed;
         this.state.movement = 'TURNING_LEFT';
         break;
 
       case 'RIGHT':
-        // Differential Skid Turn Right: Left track forward, Right track reverses or slows
+        // Differential Skid Turn Right: Left motor forward, Right motor reverses
         this.targetLeftSpeed = appliedSpeed;
         this.targetRightSpeed = -Math.round(appliedSpeed * 0.75);
         this.state.movement = 'TURNING_RIGHT';

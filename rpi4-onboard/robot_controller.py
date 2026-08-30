@@ -7,6 +7,7 @@ import time
 import threading
 from motor_controller import MotorController
 from rc_controller import RCController
+from differential_drive import DifferentialDrive
 from sensor_manager import SensorManager
 from safety_controller import SafetyController
 from telemetry import TelemetryAggregator
@@ -23,6 +24,7 @@ class RobotController:
 
         self.motors = MotorController()
         self.rc = RCController()
+        self.diff_drive = DifferentialDrive()
         self.sensors = SensorManager()
         self.safety = SafetyController()
         self.telemetry = TelemetryAggregator()
@@ -31,6 +33,7 @@ class RobotController:
         self.active_mode = "WEB"  # MANUAL_RC | WEB | AUTONOMOUS
         self.web_target_command = "STOP"
         self.web_target_speed = 50
+        self.web_vector = None
         self.running = True
 
         # Initialize WebSocket Client
@@ -50,10 +53,11 @@ class RobotController:
         self.telemetry_thread = threading.Thread(target=self._telemetry_loop, daemon=True)
         self.telemetry_thread.start()
 
-    def _handle_web_command(self, command, speed):
+    def _handle_web_command(self, command, speed, vector=None):
         self.safety.register_web_command()
         self.web_target_command = command.upper()
         self.web_target_speed = max(0, min(100, int(speed)))
+        self.web_vector = vector
 
     def _handle_web_estop(self, reason):
         self.safety.manual_estop(reason)
@@ -101,6 +105,11 @@ class RobotController:
                     if safety_mode == "WEB_TIMEOUT":
                         # Heartbeat watchdog timed out -> safely brake
                         self.motors.stop()
+                    elif self.web_target_command == "DRIVE_VECTOR" and self.web_vector:
+                        throttle = self.web_vector.get("throttle", 0.0)
+                        steering = self.web_vector.get("steering", 0.0)
+                        calc = self.diff_drive.compute_motors(throttle, steering, self.web_target_speed)
+                        self.motors.set_drive(calc["left_pwm"], calc["right_pwm"])
                     else:
                         self.motors.drive_command(self.web_target_command, self.web_target_speed)
 

@@ -23,8 +23,8 @@ class RobotService {
     return this.getState();
   }
 
-  sendControl(command, speed) {
-    return this.adapter.setMovement(command, speed);
+  sendControl(command, speed, vector = null) {
+    return this.adapter.setMovement(command, speed, vector);
   }
 
   stop() {

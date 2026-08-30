@@ -16,8 +16,8 @@ export const LivePerceptionCanvas = ({ videoRef }) => {
     fpsMetrics,
     activeAmbulance,
     crosswalkRisk,
-    telemetry,
-    robotState,
+    liveUltrasonic,
+    liveMotors,
     activeMediaStream,
     cameraActive,
     cameraSource,
@@ -281,9 +281,9 @@ export const LivePerceptionCanvas = ({ videoRef }) => {
 
           {/* Bottom HUD Bar */}
           <div className="flex justify-between items-end text-[10px] text-slate-400 z-10 font-mono">
-            <div>DIST: {telemetry.obstacleDistance ?? '2.85'}m</div>
-            <div>RADAR: {telemetry.obstacleStatus || 'CLEAR'}</div>
-            <div>SPEED: {robotState.speed}% PWM</div>
+            <div>DIST: {liveUltrasonic?.frontDistanceM ?? '2.85'}m</div>
+            <div>RADAR: {liveUltrasonic?.status || 'CLEAR'}</div>
+            <div>SPEED: {liveMotors?.left?.pwm ?? 0}% PWM</div>
           </div>
         </div>
 

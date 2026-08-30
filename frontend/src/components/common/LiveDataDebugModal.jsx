@@ -13,6 +13,11 @@ import {
   Shield,
   Clock,
   Terminal,
+  Server,
+  Camera,
+  BrainCircuit,
+  Cloud,
+  Database,
 } from 'lucide-react';
 
 export const LiveDataDebugModal = () => {
@@ -21,28 +26,34 @@ export const LiveDataDebugModal = () => {
     setIsDebugModalOpen,
     selectedRobotId,
     robotStatus,
+    socketConnected,
+    backendOnline,
+    databaseStatus,
+    s3Status,
+    aiStatus,
+    robotCameraStatus,
+    lastHeartbeatTimestamp,
+    lastTelemetryTimestamp,
+    lastDetectionTimestamp,
     liveBattery,
     liveMotors,
     liveUltrasonic,
-    liveGps,
-    liveImu,
     liveWifi,
     commandStatus,
-    lastCommandAck,
     formatFreshness,
     dataSource,
   } = useRobot();
 
-  const [stats, setStats] = useState(null);
+  const [healthData, setHealthData] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const fetchStats = async () => {
+  const fetchHealth = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/device/debug/stats').then((r) => r.json());
-      if (res.success) setStats(res.stats);
+      const res = await fetch('/api/health').then((r) => r.json());
+      setHealthData(res);
     } catch (e) {
-      console.warn('Failed to load debug stats', e);
+      console.warn('Failed to load health stats', e);
     } finally {
       setLoading(false);
     }
@@ -50,8 +61,8 @@ export const LiveDataDebugModal = () => {
 
   useEffect(() => {
     if (isDebugModalOpen) {
-      fetchStats();
-      const interval = setInterval(fetchStats, 1500);
+      fetchHealth();
+      const interval = setInterval(fetchHealth, 2000);
       return () => clearInterval(interval);
     }
   }, [isDebugModalOpen]);
@@ -61,9 +72,9 @@ export const LiveDataDebugModal = () => {
   return (
     <div
       id="live-data-debug-modal"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in font-sans"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 font-sans"
     >
-      <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+      <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-150">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
           <div className="flex items-center gap-3">
@@ -72,16 +83,18 @@ export const LiveDataDebugModal = () => {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-extrabold text-slate-900 uppercase tracking-tight">LIVE DATA MONITOR & PACKET INSPECTOR</span>
-                <StatusBadge label={dataSource} variant={dataSource === 'LIVE DEVICE' ? 'green' : 'slate'} />
+                <span className="text-sm font-extrabold text-slate-900 uppercase tracking-tight">
+                  DATA FLOW & DIAGNOSTICS MONITOR
+                </span>
+                <StatusBadge label={dataSource} variant={dataSource === 'LIVE ROBOT' ? 'green' : 'slate'} />
               </div>
-              <p className="text-xs text-slate-500">Real-time ESP32 ingestion diagnostics, latency, and raw payload telemetry</p>
+              <p className="text-xs text-slate-500">Real-time subsystem health, WebSocket state, and hardware timestamps</p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
             <button
-              onClick={fetchStats}
+              onClick={fetchHealth}
               className="p-2 rounded-xl bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 cursor-pointer"
               title="Refresh"
             >
@@ -98,142 +111,147 @@ export const LiveDataDebugModal = () => {
 
         {/* Content Body */}
         <div className="p-6 overflow-y-auto space-y-6 flex-1 text-xs">
-          {/* Top Metrics Strip */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-              <div className="text-[10px] font-bold text-slate-400 uppercase">Target Robot ID</div>
-              <div className="text-base font-black text-slate-900 font-mono">{selectedRobotId}</div>
-              <div className="text-[11px] text-emerald-700 font-semibold">{robotStatus}</div>
+          {/* Section 1: Core Subsystem Connection Status Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            {/* Backend */}
+            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+              <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase">
+                <span>BACKEND</span>
+                <Server className="w-3.5 h-3.5" />
+              </div>
+              <div className={`text-xs font-black ${backendOnline ? 'text-emerald-700' : 'text-rose-600'}`}>
+                {backendOnline ? 'CONNECTED' : 'OFFLINE'}
+              </div>
+              <div className="text-[10px] text-slate-400">Node/Express</div>
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-              <div className="text-[10px] font-bold text-slate-400 uppercase">Packets Ingested</div>
-              <div className="text-base font-black text-emerald-700 font-mono">{stats?.packetsReceived ?? 0}</div>
-              <div className="text-[11px] text-slate-400">Rejected: {stats?.packetsRejected ?? 0}</div>
+            {/* Socket.IO */}
+            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+              <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase">
+                <span>SOCKET</span>
+                <Radio className="w-3.5 h-3.5" />
+              </div>
+              <div className={`text-xs font-black ${socketConnected ? 'text-emerald-700' : 'text-rose-600'}`}>
+                {socketConnected ? 'CONNECTED' : 'DISCONNECTED'}
+              </div>
+              <div className="text-[10px] text-slate-400">Bi-directional</div>
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-              <div className="text-[10px] font-bold text-slate-400 uppercase">WiFi RSSI & IP</div>
-              <div className="text-base font-black text-slate-900 font-mono">{liveWifi.rssi != null ? `${liveWifi.rssi} dBm` : 'N/A'}</div>
-              <div className="text-[11px] text-slate-400 truncate">{liveWifi.ipAddress || '192.168.4.1'}</div>
+            {/* Robot */}
+            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+              <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase">
+                <span>ROBOT</span>
+                <Cpu className="w-3.5 h-3.5" />
+              </div>
+              <div className={`text-xs font-black ${robotStatus === 'ONLINE' ? 'text-emerald-700' : 'text-rose-600'}`}>
+                {robotStatus}
+              </div>
+              <div className="text-[10px] text-slate-400">{selectedRobotId}</div>
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-              <div className="text-[10px] font-bold text-slate-400 uppercase">Command Ack Status</div>
-              <div className="text-base font-black text-slate-900 font-mono">{commandStatus}</div>
-              <div className="text-[11px] text-slate-400">Last: {lastCommandAck?.status || 'None'}</div>
+            {/* Camera Stream */}
+            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+              <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase">
+                <span>CAMERA</span>
+                <Camera className="w-3.5 h-3.5" />
+              </div>
+              <div className={`text-xs font-black ${robotCameraStatus === 'LIVE' ? 'text-emerald-700' : 'text-slate-600'}`}>
+                {robotCameraStatus === 'LIVE' ? 'STREAMING' : 'OFFLINE'}
+              </div>
+              <div className="text-[10px] text-slate-400">MJPEG Port 8080</div>
+            </div>
+
+            {/* AI Perception */}
+            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+              <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase">
+                <span>AI ENGINE</span>
+                <BrainCircuit className="w-3.5 h-3.5" />
+              </div>
+              <div className="text-xs font-black text-emerald-700">
+                {aiStatus?.online ? 'ONLINE' : 'OFFLINE'}
+              </div>
+              <div className="text-[10px] text-slate-400">{aiStatus?.model || 'YOLOv8'}</div>
+            </div>
+
+            {/* AWS S3 */}
+            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+              <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase">
+                <span>AWS S3</span>
+                <Cloud className="w-3.5 h-3.5" />
+              </div>
+              <div className={`text-xs font-black ${healthData?.s3 === 'ok' ? 'text-emerald-700' : 'text-amber-600'}`}>
+                {healthData?.s3 === 'ok' ? 'CONNECTED' : 'LOCAL / OK'}
+              </div>
+              <div className="text-[10px] text-slate-400">ap-south-1</div>
             </div>
           </div>
 
-          {/* Subsystem Live Packet Snapshot */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Battery & Powertrain */}
-            <div className="p-4 rounded-2xl bg-white border border-slate-200 space-y-3">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                <span className="font-bold text-slate-900 uppercase text-[11px]">36V BATTERY & POWER RAIL</span>
-                <span className="text-[10px] text-slate-400 font-mono">{formatFreshness(liveBattery.updatedAt).text}</span>
-              </div>
-              <div className="grid grid-cols-2 gap-2 font-mono">
-                <div>Voltage: <strong className="text-slate-900">{liveBattery.voltage != null ? `${liveBattery.voltage} V` : 'N/A'}</strong></div>
-                <div>Percentage: <strong className="text-slate-900">{liveBattery.percentage != null ? `${liveBattery.percentage}%` : 'N/A'}</strong></div>
-                <div>Current: <strong className="text-slate-900">{liveBattery.current != null ? `${liveBattery.current} A` : 'N/A'}</strong></div>
-                <div>Temp: <strong className="text-slate-900">{liveBattery.temperature != null ? `${liveBattery.temperature}°C` : 'N/A'}</strong></div>
-              </div>
-            </div>
-
-            {/* Ultrasonic & Safety */}
-            <div className="p-4 rounded-2xl bg-white border border-slate-200 space-y-3">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                <span className="font-bold text-slate-900 uppercase text-[11px]">HC-SR04 RADAR & SAFETY</span>
-                <span className="text-[10px] text-slate-400 font-mono">{formatFreshness(liveUltrasonic.updatedAt).text}</span>
-              </div>
-              <div className="grid grid-cols-2 gap-2 font-mono">
-                <div>Front Radar: <strong className="text-slate-900">{liveUltrasonic.frontDistanceM != null ? `${liveUltrasonic.frontDistanceM} m` : 'N/A'}</strong></div>
-                <div>Rear Radar: <strong className="text-slate-900">{liveUltrasonic.rearDistanceM != null ? `${liveUltrasonic.rearDistanceM} m` : 'N/A'}</strong></div>
-                <div>Radar Status: <strong className="text-emerald-700">{liveUltrasonic.status}</strong></div>
-                <div>E-Stop: <strong className={liveBattery.status === 'CRITICAL' ? 'text-rose-600' : 'text-slate-900'}>{commandStatus}</strong></div>
-              </div>
-            </div>
-
-            {/* IMU 6-DOF */}
-            <div className="p-4 rounded-2xl bg-white border border-slate-200 space-y-3">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                <span className="font-bold text-slate-900 uppercase text-[11px]">IMU 6-DOF SENSORS</span>
-                <span className="text-[10px] text-slate-400 font-mono">{formatFreshness(liveImu.updatedAt).text}</span>
-              </div>
-              {liveImu.available ? (
-                <div className="grid grid-cols-2 gap-2 font-mono">
-                  <div>Accel X/Y/Z: <strong className="text-slate-900">{liveImu.accel.x}, {liveImu.accel.y}, {liveImu.accel.z}</strong></div>
-                  <div>Gyro X/Y/Z: <strong className="text-slate-900">{liveImu.gyro.x}, {liveImu.gyro.y}, {liveImu.gyro.z}</strong></div>
+          {/* Section 2: Data Flow Heartbeat & Timestamp Inspector */}
+          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+            <div className="text-xs font-bold text-slate-900 uppercase">REAL-TIME DATA FLOW TIMESTAMPS</div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 font-mono">
+              <div className="p-3 rounded-xl bg-white border border-slate-200 space-y-1">
+                <div className="text-[10px] text-slate-400 font-bold uppercase">LAST ROBOT HEARTBEAT</div>
+                <div className="text-xs font-bold text-slate-800">
+                  {lastHeartbeatTimestamp ? new Date(lastHeartbeatTimestamp).toLocaleTimeString() : 'Awaiting Heartbeat'}
                 </div>
-              ) : (
-                <div className="text-slate-400 text-[11px]">IMU NOT AVAILABLE (Awaiting physical sensor packet)</div>
-              )}
-            </div>
-
-            {/* GPS Hardware */}
-            <div className="p-4 rounded-2xl bg-white border border-slate-200 space-y-3">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                <span className="font-bold text-slate-900 uppercase text-[11px]">GPS SATELLITE MODULE</span>
-                <span className="text-[10px] text-slate-400 font-mono">{formatFreshness(liveGps.updatedAt).text}</span>
+                <div className="text-[10px] text-emerald-700 font-semibold">{formatFreshness(lastHeartbeatTimestamp).text}</div>
               </div>
-              {liveGps.available ? (
-                <div className="grid grid-cols-2 gap-2 font-mono">
-                  <div>Lat/Lng: <strong className="text-slate-900">{liveGps.latitude}, {liveGps.longitude}</strong></div>
-                  <div>Speed/Sat: <strong className="text-slate-900">{liveGps.speed} km/h • {liveGps.satellites || 0} Sats</strong></div>
+
+              <div className="p-3 rounded-xl bg-white border border-slate-200 space-y-1">
+                <div className="text-[10px] text-slate-400 font-bold uppercase">LAST TELEMETRY SAMPLE</div>
+                <div className="text-xs font-bold text-slate-800">
+                  {lastTelemetryTimestamp ? new Date(lastTelemetryTimestamp).toLocaleTimeString() : 'Awaiting Telemetry'}
                 </div>
-              ) : (
-                <div className="text-slate-400 text-[11px]">GPS UNAVAILABLE (No satellite fix)</div>
-              )}
+                <div className="text-[10px] text-emerald-700 font-semibold">{formatFreshness(lastTelemetryTimestamp).text}</div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-white border border-slate-200 space-y-1">
+                <div className="text-[10px] text-slate-400 font-bold uppercase">LAST AI DETECTION</div>
+                <div className="text-xs font-bold text-slate-800">
+                  {lastDetectionTimestamp ? new Date(lastDetectionTimestamp).toLocaleTimeString() : 'No Detections Yet'}
+                </div>
+                <div className="text-[10px] text-emerald-700 font-semibold">{formatFreshness(lastDetectionTimestamp).text}</div>
+              </div>
             </div>
           </div>
 
-          {/* Raw Telemetry JSON Ingestion Stream */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-slate-900 font-bold uppercase text-[11px]">
-              <Terminal className="w-3.5 h-3.5 text-emerald-600" />
-              <span>LATEST INGESTED HARDWARE TELEMETRY PACKET (RAW JSON)</span>
+          {/* Section 3: Hardware Diagnostics Snapshot */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 font-mono">
+            <div className="p-4 rounded-2xl bg-white border border-slate-200 space-y-2">
+              <div className="font-bold text-slate-900 uppercase text-[11px] border-b border-slate-100 pb-1.5 font-sans">
+                POWERTRAIN & SENSORS
+              </div>
+              <div className="space-y-1 text-slate-600">
+                <div>Battery: <strong className="text-slate-900">{liveBattery.voltage != null ? `${liveBattery.voltage} V (${liveBattery.percentage}%)` : 'N/A'}</strong></div>
+                <div>Left Motor: <strong className="text-slate-900">{liveMotors.left.pwm != null ? `PWM ${liveMotors.left.pwm}` : 'PWM 0'} ({liveMotors.left.current || '0.0'} A)</strong></div>
+                <div>Right Motor: <strong className="text-slate-900">{liveMotors.right.pwm != null ? `PWM ${liveMotors.right.pwm}` : 'PWM 0'} ({liveMotors.right.current || '0.0'} A)</strong></div>
+                <div>Ultrasonic Radar: <strong className="text-slate-900">{liveUltrasonic.frontDistanceCm != null ? `${liveUltrasonic.frontDistanceCm} cm` : 'N/A'}</strong></div>
+              </div>
             </div>
-            <div className="p-4 rounded-2xl bg-slate-900 text-emerald-400 font-mono text-[11px] overflow-x-auto max-h-48">
-              <pre>
-                {JSON.stringify(
-                  stats?.rawTelemetryHistory?.length
-                    ? stats.rawTelemetryHistory[stats.rawTelemetryHistory.length - 1]
-                    : {
-                        message: 'No live telemetry packet received yet. Send POST to /api/device/telemetry to ingest real device data.',
-                        sampleEndpoint: '/api/device/telemetry',
-                        samplePayload: {
-                          robotId: selectedRobotId,
-                          batteryVoltage: 37.8,
-                          batteryPercentage: 92,
-                          batteryCurrent: 0.82,
-                          leftMotorCurrent: 0.45,
-                          rightMotorCurrent: 0.48,
-                          leftMotorPWM: 140,
-                          rightMotorPWM: 140,
-                          obstacleDistance: 2.85,
-                          temperature: 28.5,
-                          wifiRSSI: -48,
-                          controlMode: 'WEB',
-                          emergencyStop: false,
-                        },
-                      },
-                  null,
-                  2
-                )}
-              </pre>
+
+            <div className="p-4 rounded-2xl bg-white border border-slate-200 space-y-2">
+              <div className="font-bold text-slate-900 uppercase text-[11px] border-b border-slate-100 pb-1.5 font-sans">
+                NETWORK & FIRMWARE
+              </div>
+              <div className="space-y-1 text-slate-600">
+                <div>WiFi RSSI: <strong className="text-slate-900">{liveWifi.rssi != null ? `${liveWifi.rssi} dBm` : 'N/A'}</strong></div>
+                <div>Firmware: <strong className="text-slate-900">{liveWifi.firmwareVersion}</strong></div>
+                <div>Command Status: <strong className="text-emerald-700">{commandStatus}</strong></div>
+                <div>Database Status: <strong className="text-slate-900">{databaseStatus}</strong></div>
+              </div>
             </div>
           </div>
         </div>
 
         {/* Footer */}
         <div className="px-6 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-          <span>Backend Port: 4000 • Socket.IO Ingestion: ACTIVE</span>
+          <span>PRAHARI Hardware Command Engine v3.2</span>
           <button
             onClick={() => setIsDebugModalOpen(false)}
             className="px-4 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold transition cursor-pointer"
           >
-            Close Monitor
+            Close Diagnostics
           </button>
         </div>
       </div>

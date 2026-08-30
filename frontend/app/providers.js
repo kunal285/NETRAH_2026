@@ -8,6 +8,7 @@ import { Header } from '@/components/layout/Header';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { BottomNav } from '@/components/layout/BottomNav';
 import { EmergencyBanner } from '@/components/common/EmergencyBanner';
+import { FloatingEmergencyStop } from '@/components/common/FloatingEmergencyStop';
 import { AmbulanceAlertModal } from '@/components/common/AmbulanceAlertModal';
 import { LiveDataDebugModal } from '@/components/common/LiveDataDebugModal';
 import { PwaInstallPrompt } from '@/components/common/PwaInstallPrompt';
@@ -95,14 +96,15 @@ function AppShell({ children }) {
       <div className="flex-1 flex overflow-hidden">
         <Sidebar />
 
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 pb-24 lg:pb-8 bg-slate-50">
-          <div className="max-w-7xl mx-auto space-y-6">
+        <main className="flex-1 overflow-y-auto p-3 sm:p-6 lg:p-8 pb-32 sm:pb-24 lg:pb-8 bg-slate-50">
+          <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
             <EmergencyBanner />
             {children}
           </div>
         </main>
       </div>
 
+      <FloatingEmergencyStop />
       <AmbulanceAlertModal />
       <LiveDataDebugModal />
       <PwaInstallPrompt />

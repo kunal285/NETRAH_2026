@@ -842,3 +842,136 @@ Robot        MongoDB       AI Service
 ```
 
 Once all required services are running and correctly configured, PRAHARI is ready for development, testing, and production deployment.
+
+---
+
+# 27. HOW TO CONNECT PRAHARI ROBOT (Hardware Integration Guide)
+
+This guide explains how to connect the physical **Raspberry Pi 4 / 5 Robot**, **Robot Camera Stream**, **AI Perception Service**, and **Command Center Dashboard**.
+
+### Network & URL Architecture
+
+```text
+Raspberry Pi 4 Robot (Camera + Motors)
+  ├─ MJPEG Live Video Server:  http://<ROBOT_IP>:8080/video
+  └─ WebSocket Telemetry Out:  http://<BACKEND_IP>:4000
+             │
+             ▼
+Backend Command Center (Node.js / Express / Socket.IO)
+  ├─ REST API:                 http://<BACKEND_IP>:4000/api
+  ├─ Socket.IO Engine:         http://<BACKEND_IP>:4000
+  └─ AWS S3 Image Ingestion:   ap-south-1
+             │
+             ▼
+AI Perception Service (FastAPI / YOLO / ANPR)
+  ├─ AI API:                   http://<AI_IP>:8000
+  └─ Frame Ingestion:          http://<ROBOT_IP>:8080/video
+             │
+             ▼
+Next.js Operator Dashboard
+  └─ Browser / Phone View:     http://<DASHBOARD_IP>:3000
+```
+
+---
+
+### Step 1: Configure Environment Variables
+
+#### Robot (`rpi4-onboard/config.py` or `.env`):
+```bash
+ROBOT_ID=PRAHARI-01
+BACKEND_HOST=192.168.1.50   # IP address of machine running Backend
+BACKEND_PORT=4000
+CAMERA_STREAM_PORT=8080
+```
+
+#### AI Service (`ai-service/.env`):
+```bash
+PORT=8000
+BACKEND_URL=http://192.168.1.50:4000
+ROBOT_CAMERA_STREAM_URL=http://192.168.1.100:8080/video  # Robot IP
+ROBOT_ID=PRAHARI-01
+INFERENCE_INTERVAL_SEC=1.0
+```
+
+#### Backend (`backend/.env`):
+```bash
+PORT=4000
+DEFAULT_ROBOT_ID=PRAHARI-01
+ROBOT_CAMERA_STREAM_URL=http://192.168.1.100:8080/video
+AI_SERVICE_URL=http://127.0.0.1:8000
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key
+AWS_REGION=ap-south-1
+AWS_S3_BUCKET_NAME=prahari-image-storage-2026
+```
+
+#### Frontend (`frontend/.env.local`):
+```bash
+NEXT_PUBLIC_API_URL=http://192.168.1.50:4000
+NEXT_PUBLIC_SOCKET_URL=http://192.168.1.50:4000
+NEXT_PUBLIC_ROBOT_CAMERA_STREAM_URL=http://192.168.1.100:8080/video
+NEXT_PUBLIC_AI_SERVICE_URL=http://192.168.1.50:8000
+NEXT_PUBLIC_DEMO_MODE=false
+```
+
+---
+
+### Step 2: Start All Services
+
+#### 1. On Raspberry Pi 4 Robot:
+```bash
+cd rpi4-onboard
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python3 main.py
+```
+*Verification:*
+Open `http://<ROBOT_IP>:8080/video` in any browser on the local network. You should see the live MJPEG camera stream immediately.
+
+#### 2. On Backend Server:
+```bash
+cd backend
+npm install
+npm start
+```
+*Verification:*
+Open `http://<BACKEND_IP>:4000/health`. Should return `{"status": "healthy", "robot": "online", "s3": "ok"}`.
+
+#### 3. On AI Perception Service:
+```bash
+cd ai-service
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python3 main.py
+```
+*Verification:*
+Open `http://<AI_IP>:8000/health`. Should return `{"status": "healthy", "ai": "online", "model": "YOLOv8"}`.
+
+#### 4. On Frontend:
+```bash
+cd frontend
+npm install
+npm run dev
+```
+*Verification:*
+Open `http://<YOUR_PHONE_IP_OR_LOCALHOST>:3000`.
+
+---
+
+### Step 3: Verify Live Pipeline & Hardware Controls
+
+1. **Robot Status**:
+   - The top header will automatically display `● ONLINE` as soon as the robot daemon starts sending heartbeats.
+   - If the robot disconnects or powers off, the watchdog timer marks the status as `OFFLINE` after 4.5 seconds.
+2. **Camera Stream**:
+   - Navigate to the **Camera** or **Dashboard** tab.
+   - The live mast video feed from the Raspberry Pi camera will appear with `● LIVE` and `30 FPS`.
+3. **AI Detections**:
+   - Point the camera at a vehicle or license plate.
+   - AI detects the object -> creates snapshot -> uploads image to AWS S3 -> backend emits `detection:new` -> dashboard counters and live detection feed update instantly without page refresh.
+4. **Robot Teleoperation**:
+   - Go to **Control** or use the **Dashboard Joystick**.
+   - Use `W/A/S/D` or touch joystick to send differential drive motor speeds.
+   - Press `Space` or `🛑 E-STOP` for immediate safety brake.

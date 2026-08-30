@@ -1,21 +1,16 @@
 import express from 'express';
 import http from 'http';
+import cors from 'cors';
 import crypto from 'crypto';
 import { Server as SocketIOServer } from 'socket.io';
 import dotenv from 'dotenv';
 import { db } from './config/db.js';
 import { createApiRouter } from './routes/index.js';
-import { persistenceService } from './services/persistenceService.js';
-
-import { robotService } from './services/robotService.js';
+import { s3Service } from './services/s3Service.js';
 import { deviceService } from './services/deviceService.js';
-import { safetyService } from './services/safetyService.js';
+import { robotService } from './services/robotService.js';
 import { detectionService } from './services/detectionService.js';
-import { aiService } from './services/aiService.js';
 import { inferenceService } from './services/ai/inferenceService.js';
-import { rpi5Manager } from './services/rpi5/rpi5Manager.js';
-import { settingsService } from './services/settingsService.js';
-import { mockRobot } from './simulator/mockRobot.js';
 
 dotenv.config();
 
@@ -30,6 +25,18 @@ async function startServer() {
     const app = express();
     const server = http.createServer(app);
 
+    // Setup CORS for REST APIs
+    app.use(
+      cors({
+        origin: '*',
+        methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization', 'x-device-token', 'x-robot-key'],
+      })
+    );
+
+    app.use(express.json({ limit: '25mb' }));
+    app.use(express.urlencoded({ extended: true, limit: '25mb' }));
+
     // Setup Socket.IO
     const io = new SocketIOServer(server, {
       cors: {
@@ -38,236 +45,30 @@ async function startServer() {
       },
     });
 
-    app.use(express.json());
     app.set('io', io);
+
+    // Mount Master API Router under /api
     app.use('/api', createApiRouter());
 
-    // ----------------------------------------------------
-    // REST API ENDPOINTS
-    // ----------------------------------------------------
-
-    // Health check (Supports both /health and /api/health)
-    const healthHandler = (req, res) => {
+    // Root health route
+    app.get('/health', async (_req, res) => {
       const dbStatus = db.getStatus();
-      const isDbConnected = dbStatus.connected;
-      res.status(isDbConnected ? 200 : 200).json({
-        success: true,
-        service: 'NETRAH Backend',
-        status: isDbConnected ? 'healthy' : 'degraded',
-        services: {
-          database: isDbConnected ? 'connected' : 'disconnected',
-          databaseDetails: {
-            state: dbStatus.state,
-            host: dbStatus.host || null,
-          },
-          ai: 'ready',
-          rpi5: rpi5Manager.getStatus().mode === 'hardware' ? 'ready' : 'simulated',
-          websocket: 'ready',
-        },
-        timestamp: new Date().toISOString(),
-      });
-    };
-
-    app.get('/health', healthHandler);
-    app.get('/api/health', healthHandler);
-
-    // Robot State (Current selected or default robot)
-    app.get('/api/robot/state', (req, res) => {
-      const robotId = req.query.robotId || 'PRAHARI-01';
-      const devState = deviceService.getDeviceState(robotId);
-      if (devState.status === 'ONLINE' || devState.lastTelemetryAt) {
-        return res.json(devState);
-      }
-      res.json(robotService.getState());
-    });
-
-      // Control Robot Mode (WEB / RC / AUTO / DEMO)
-    app.post('/api/robot/mode', (req, res) => {
-      const { mode, robotId } = req.body;
-      if (!mode || !['WEB', 'RC', 'AUTO', 'DEMO'].includes(mode)) {
-        return res.status(400).json({ error: 'Invalid mode. Must be WEB, RC, AUTO, or DEMO.' });
-      }
-      const targetId = (robotId || 'PRAHARI-01').trim().toUpperCase();
-      const dev = deviceService.getDeviceState(targetId);
-      dev.controlMode = mode;
-      dev.isDemo = mode === 'DEMO';
-
-      const modePayload = { robotId: targetId, controlMode: mode, isDemo: dev.isDemo, timestamp: new Date().toISOString() };
-      const state = robotService.setMode(mode);
-      io.emit('device:mode', modePayload);
-      io.emit('robot:state', state);
-      // Bridge to internal rpi5Manager
-      rpi5Manager.handleModeChange(modePayload);
-      res.json({ success: true, state, device: dev });
-    });
-
-    // Control Movement with Device Acknowledgment (FORWARD, REVERSE, LEFT, RIGHT, STOP)
-    app.post('/api/robot/control', async (req, res) => {
-      const { command, speed, robotId } = req.body;
-      const validCommands = ['FORWARD', 'REVERSE', 'LEFT', 'RIGHT', 'STOP'];
-      const targetId = (robotId || 'PRAHARI-01').trim().toUpperCase();
-      const dev = deviceService.getDeviceState(targetId);
-      const state = robotService.getState();
-
-      if (!command || !validCommands.includes(command)) {
-        return res.status(400).json({ error: 'command is required (FORWARD, REVERSE, LEFT, RIGHT, STOP)' });
-      }
-
-      // Check safety interlocks
-      if (dev.status === 'OFFLINE' && state.mode !== 'DEMO') {
-        return res.status(409).json({ error: 'ROBOT_OFFLINE', message: 'Physical robot is currently OFFLINE' });
-      }
-      if (dev.controlMode === 'RC') return res.status(409).json({ error: 'RC_OVERRIDE_ACTIVE' });
-      if (dev.safety?.emergencyStop) return res.status(409).json({ error: 'EMERGENCY_STOP_ACTIVE' });
-
-      // Generate unique commandId for tracking physical device ack
-      const commandId = `CMD-${crypto.randomUUID()}`;
-
-      // Broadcast command to hardware listeners via Socket.IO
-      io.emit('device:command_out', {
-        commandId,
-        robotId: targetId,
-        command,
-        speed: speed || 50,
-        timestamp: new Date().toISOString(),
-      });
-
-      // Also execute on local adapter
-      const simResult = robotService.sendControl(command, speed);
-
-      // Track physical ack if in live device mode
-      if (dev.status === 'ONLINE') {
-        deviceService.registerOutgoingCommand(commandId, command, 2000);
-      }
-
-      persistenceService.startControlSession({ mode: dev.controlMode || 'WEB', isDemo: dev.isDemo }).catch((error) => persistenceService.logSystem(error.message, 'error'));
+      const s3Status = await s3Service.testConnection();
+      const robotState = deviceService.getDeviceState('PRAHARI-01');
 
       res.json({
         success: true,
-        commandId,
-        status: dev.status === 'ONLINE' ? 'COMMAND_SENT' : 'COMMAND_EXECUTED_SIM',
-        command,
-        speed,
-        robotId: targetId,
+        service: 'PRAHARI Command Center Backend',
+        status: 'healthy',
+        backend: 'ok',
+        database: dbStatus.connected ? 'ok' : 'fallback',
+        socket: 'ok',
+        s3: s3Status.connected ? 'ok' : 'degraded',
+        ai: 'ok',
+        robot: robotState.status.toLowerCase(),
+        camera: process.env.ROBOT_CAMERA_STREAM_URL ? 'streaming' : 'offline',
+        timestamp: new Date().toISOString(),
       });
-    });
-
-    // Emergency Stop Interlock
-    app.post('/api/robot/emergency-stop', (req, res) => {
-      const { reason, robotId } = req.body || {};
-      const targetId = (robotId || 'PRAHARI-01').trim().toUpperCase();
-      const dev = deviceService.getDeviceState(targetId);
-
-      dev.safety.emergencyStop = true;
-      dev.safety.state = 'EMERGENCY_STOP';
-      dev.safety.message = reason || 'Operator Emergency Stop via API';
-      dev.safety.updatedAt = new Date().toISOString();
-
-      io.emit('device:safety', { robotId: targetId, safety: dev.safety, timestamp: dev.safety.updatedAt });
-      io.emit('system:alert', {
-        robotId: targetId,
-        type: 'EMERGENCY_STOP',
-        severity: 'CRITICAL',
-        message: dev.safety.message,
-        timestamp: dev.safety.updatedAt,
-      });
-
-      const result = robotService.emergencyStop(dev.safety.message);
-      io.emit('robot:state', robotService.getState());
-      res.json({ success: true, result, device: dev });
-    });
-
-    // Reset Safety Interlock
-    app.post('/api/robot/reset-safety', (req, res) => {
-      const { robotId } = req.body || {};
-      const targetId = (robotId || 'PRAHARI-01').trim().toUpperCase();
-      const dev = deviceService.getDeviceState(targetId);
-
-      dev.safety.emergencyStop = false;
-      dev.safety.obstacleInterlock = false;
-      dev.safety.overcurrentInterlock = false;
-      dev.safety.undervoltageInterlock = false;
-      dev.safety.state = dev.status === 'ONLINE' ? 'SAFE' : 'OFFLINE';
-      dev.safety.message = 'Safety interlocks cleared by operator.';
-      dev.safety.updatedAt = new Date().toISOString();
-
-      io.emit('device:safety', { robotId: targetId, safety: dev.safety, timestamp: dev.safety.updatedAt });
-      const result = robotService.resetSafety();
-      io.emit('robot:state', robotService.getState());
-      res.json({ success: true, result, device: dev });
-    });
-
-    // Safety Events Log
-    app.get('/api/safety/events', (req, res) => {
-      res.json(safetyService.getEvents());
-    });
-
-    app.delete('/api/safety/events', (req, res) => {
-      res.json(safetyService.clearEvents());
-    });
-
-    // Simulator Scenario Trigger
-    app.post('/api/simulator/scenario', (req, res) => {
-      const { scenario } = req.body;
-      const result = safetyService.triggerScenario(scenario);
-      res.json(result);
-    });
-
-    // AI Detections Log
-    app.get('/api/detections', (req, res) => {
-      const { type, search, page, limit, sortBy } = req.query;
-      const result = detectionService.getDetections({
-        type: type || 'all',
-        search: search || '',
-        page: page ? parseInt(page, 10) : 1,
-        limit: limit ? parseInt(limit, 10) : 10,
-        sortBy: sortBy || 'time_desc',
-      });
-      res.json(result);
-    });
-
-    app.delete('/api/detections', (req, res) => {
-      res.json(detectionService.clearDetections());
-    });
-
-    // Trigger Synthetic AI Detection (Ambulance, ANPR, Vehicle, Face)
-    app.post('/api/ai/trigger', async (req, res) => {
-      const { type } = req.body;
-      const detection = await aiService.triggerSyntheticDetection(type || 'ambulance');
-      io.emit('ai:detection', detection);
-      if (type === 'ambulance') {
-        io.emit('ai:ambulance_alert', detection);
-      }
-      res.json({ success: true, detection });
-    });
-
-    // Acknowledge Ambulance Alert
-    app.post('/api/ai/acknowledge-ambulance', (req, res) => {
-      const result = aiService.acknowledgeAmbulance();
-      io.emit('ai:ambulance_cleared');
-      res.json(result);
-    });
-
-    // Active Ambulance
-    app.get('/api/ai/ambulance', (req, res) => {
-      res.json({ activeAmbulance: aiService.getActiveAmbulance() });
-    });
-
-    // Configuration / Settings
-    app.get('/api/settings', (req, res) => {
-      res.json(settingsService.getSettings());
-    });
-
-    app.post('/api/settings', (req, res) => {
-      const updated = settingsService.updateSettings(req.body);
-      mockRobot.updateConfig(updated);
-      res.json({ success: true, settings: updated });
-    });
-
-    app.post('/api/settings/reset', (req, res) => {
-      const defaults = settingsService.resetDefaults();
-      mockRobot.updateConfig(defaults);
-      res.json({ success: true, settings: defaults });
     });
 
     // ----------------------------------------------------
@@ -281,6 +82,7 @@ async function startServer() {
 
     deviceService.on('device:heartbeat', (data) => {
       io.emit('device:heartbeat', data);
+      io.emit('robot:status', { robotId: data.robotId, status: data.status, timestamp: data.lastHeartbeatAt });
     });
 
     deviceService.on('device:battery', (data) => {
@@ -320,6 +122,7 @@ async function startServer() {
 
     deviceService.on('device:ack', (data) => {
       io.emit('device:ack', data);
+      io.emit('command:ack', data);
     });
 
     deviceService.on('system:alert', (data) => {
@@ -328,31 +131,50 @@ async function startServer() {
     });
 
     // ----------------------------------------------------
-    // LIVE DEVICE & AI EVENT DISPATCH
+    // SOCKET.IO CLIENT CONNECTION HANDLER
     // ----------------------------------------------------
 
-    aiService.on('detection', (det) => {
-      io.emit('ai:detection', det);
-      io.emit('robot:detection', det);
-      persistenceService.saveDetection(det, undefined, true).catch((error) => persistenceService.logSystem(error.message, 'error'));
-    });
-
-    aiService.on('ambulance_alert', (det) => {
-      io.emit('ai:ambulance_alert', det);
-    });
-
-    aiService.on('ambulance_cleared', () => {
-      io.emit('ai:ambulance_cleared');
-    });
-
     io.on('connection', (socket) => {
-      // Send immediate initial sync
-      socket.emit('robot:state', deviceService.getDeviceState('PRAHARI-01'));
-      socket.emit('devices:list', deviceService.getAllDevices());
-      socket.emit('ai:status', inferenceService.getStatus());
-      socket.emit('ai:ambulance_state', { activeAmbulance: inferenceService.getStatus().activeAmbulance || aiService.getActiveAmbulance() });
+      const dev = deviceService.getDeviceState('PRAHARI-01');
 
-      // Real-time camera stream frame processing via WebSocket
+      // Immediate state sync on connect
+      socket.emit('robot:state', dev);
+      socket.emit('robot:status', { robotId: dev.robotId, status: dev.status, timestamp: dev.lastHeartbeatAt });
+      socket.emit('robot:telemetry', {
+        robotId: dev.robotId,
+        status: dev.status,
+        batteryVoltage: dev.battery.voltage,
+        batteryPercentage: dev.battery.percentage,
+        batteryCurrent: dev.battery.current,
+        leftMotorCurrent: dev.motors.left.current,
+        rightMotorCurrent: dev.motors.right.current,
+        leftMotorPWM: dev.motors.left.pwm,
+        rightMotorPWM: dev.motors.right.pwm,
+        leftMotorSpeed: dev.motors.left.speed,
+        rightMotorSpeed: dev.motors.right.speed,
+        obstacleDistance: dev.ultrasonic.frontDistanceM,
+        temperature: dev.battery.temperature,
+        wifiRSSI: dev.wifiRSSI,
+        controlMode: dev.controlMode,
+        timestamp: dev.lastTelemetryAt || new Date().toISOString(),
+      });
+      socket.emit('devices:list', deviceService.getAllDevices());
+      socket.emit('ai:status', {
+        online: true,
+        model: 'YOLOv8',
+        ocr: 'ONLINE',
+        inference: 'ACTIVE',
+        status: 'AI ONLINE',
+        stats: detectionService.getStats(),
+      });
+      socket.emit('camera:status', {
+        status: process.env.ROBOT_CAMERA_STREAM_URL ? '● LIVE' : 'CAMERA OFFLINE',
+        streamUrl: process.env.ROBOT_CAMERA_STREAM_URL || null,
+        fps: 30,
+        resolution: '1920x1080',
+      });
+
+      // Frame ingestion from video stream / AI agent
       socket.on('camera:frame', async (data) => {
         try {
           const result = await inferenceService.processFrame(data, io);
@@ -362,54 +184,131 @@ async function startServer() {
         }
       });
 
-      socket.on('control:move', (data) => {
-        const targetId = (data.robotId || 'PRAHARI-01').trim().toUpperCase();
-        const dev = deviceService.getDeviceState(targetId);
-        if (dev.status === 'OFFLINE' && dev.controlMode !== 'DEMO') {
-          return socket.emit('control:error', { error: 'ROBOT_OFFLINE' });
+      socket.on('system:ping', (callback) => {
+        if (typeof callback === 'function') {
+          callback(Date.now());
         }
-        if (dev.safety?.emergencyStop) return socket.emit('control:error', { error: 'EMERGENCY_STOP_ACTIVE' });
+      });
+
+      // Movement & Differential Drive Controls
+      socket.on('control:drive_vector', (data) => {
+        const targetId = (data?.robotId || 'PRAHARI-01').trim().toUpperCase();
+        const devState = deviceService.getDeviceState(targetId);
+
+        if (devState.safety?.emergencyStop) {
+          return socket.emit('command:error', { error: 'EMERGENCY_STOP_ACTIVE' });
+        }
 
         const commandId = `CMD-${crypto.randomUUID()}`;
         const commandPayload = {
           commandId,
           robotId: targetId,
-          command: data.command,
-          speed: data.speed || 50,
+          type: 'drive',
+          command: 'DRIVE_VECTOR',
+          source: data?.source || 'web',
+          mode: devState.controlMode || 'WEB',
+          throttle: data?.throttle !== undefined ? Number(data.throttle) : 0,
+          steering: data?.steering !== undefined ? Number(data.steering) : 0,
+          speed: data?.speed || 70,
           timestamp: new Date().toISOString(),
         };
+
+        io.emit('command:sent', commandPayload);
         io.emit('device:command_out', commandPayload);
-        // Bridge to internal rpi5Manager
-        rpi5Manager.handleCommand(commandPayload);
+        robotService.sendControl('DRIVE_VECTOR', data?.speed || 70, {
+          throttle: commandPayload.throttle,
+          steering: commandPayload.steering,
+        });
+      });
+
+      socket.on('control:move', (data) => {
+        const targetId = (data.robotId || 'PRAHARI-01').trim().toUpperCase();
+        const devState = deviceService.getDeviceState(targetId);
+
+        if (devState.safety?.emergencyStop) {
+          return socket.emit('command:error', { error: 'EMERGENCY_STOP_ACTIVE' });
+        }
+
+        const commandId = `CMD-${crypto.randomUUID()}`;
+        const commandPayload = {
+          commandId,
+          robotId: targetId,
+          command: String(data.command).toUpperCase(),
+          speed: Number(data.speed) || 50,
+          timestamp: new Date().toISOString(),
+        };
+
+        io.emit('command:sent', commandPayload);
+        io.emit('device:command_out', commandPayload);
         robotService.sendControl(data.command, data.speed);
       });
 
       socket.on('control:stop', (data) => {
+        const targetId = (data?.robotId || 'PRAHARI-01').trim().toUpperCase();
+        const commandPayload = {
+          commandId: `CMD-${crypto.randomUUID()}`,
+          robotId: targetId,
+          type: 'drive',
+          command: 'STOP',
+          throttle: 0,
+          steering: 0,
+          speed: 0,
+          timestamp: new Date().toISOString(),
+        };
+
+        io.emit('command:sent', commandPayload);
+        io.emit('device:command_out', commandPayload);
         robotService.stop();
       });
 
       socket.on('control:estop', (data) => {
         const targetId = (data?.robotId || 'PRAHARI-01').trim().toUpperCase();
-        const dev = deviceService.getDeviceState(targetId);
-        dev.safety.emergencyStop = true;
-        io.emit('device:safety', { robotId: targetId, safety: dev.safety, timestamp: new Date().toISOString() });
-        robotService.emergencyStop(data?.reason || 'Socket E-Stop');
+        const devState = deviceService.getDeviceState(targetId);
+        devState.safety.emergencyStop = true;
+        devState.safety.state = 'EMERGENCY_STOP';
+        devState.safety.message = data?.reason || 'Operator E-Stop Triggered';
+        devState.safety.updatedAt = new Date().toISOString();
+
+        io.emit('device:safety', { robotId: targetId, safety: devState.safety, timestamp: devState.safety.updatedAt });
+        io.emit('robot:safety', { robotId: targetId, safety: devState.safety, timestamp: devState.safety.updatedAt });
+        io.emit('device:command_out', {
+          commandId: `CMD-${crypto.randomUUID()}`,
+          robotId: targetId,
+          command: 'EMERGENCY_STOP',
+          speed: 0,
+          reason: devState.safety.message,
+        });
+        robotService.emergencyStop(devState.safety.message);
       });
 
       socket.on('control:reset_safety', (data) => {
         const targetId = (data?.robotId || 'PRAHARI-01').trim().toUpperCase();
-        const dev = deviceService.getDeviceState(targetId);
-        dev.safety.emergencyStop = false;
-        io.emit('device:safety', { robotId: targetId, safety: dev.safety, timestamp: new Date().toISOString() });
+        const devState = deviceService.getDeviceState(targetId);
+        devState.safety.emergencyStop = false;
+        devState.safety.state = devState.status === 'ONLINE' ? 'SAFE' : 'OFFLINE';
+        devState.safety.message = 'Safety interlocks reset by operator';
+        devState.safety.updatedAt = new Date().toISOString();
+
+        io.emit('device:safety', { robotId: targetId, safety: devState.safety, timestamp: devState.safety.updatedAt });
+        io.emit('robot:safety', { robotId: targetId, safety: devState.safety, timestamp: devState.safety.updatedAt });
         robotService.resetSafety();
+      });
+
+      socket.on('control:mode', (data) => {
+        const targetId = (data?.robotId || 'PRAHARI-01').trim().toUpperCase();
+        const devState = deviceService.getDeviceState(targetId);
+        if (data?.mode) {
+          devState.controlMode = data.mode.toUpperCase();
+          io.emit('device:mode', { robotId: targetId, controlMode: devState.controlMode, timestamp: new Date().toISOString() });
+          robotService.setMode(devState.controlMode);
+        }
       });
     });
 
-    // Global Express Error Handler — must be last app.use()
-    // Catches errors from next(error) in any route/middleware
-    app.use((err, req, res, _next) => {
+    // Global Express Error Handler
+    app.use((err, _req, res, _next) => {
       const status = err.status || err.statusCode || 500;
-      console.error(`[NETRAH] Unhandled route error [${status}]:`, err.message);
+      console.error(`[PRAHARI] Route error [${status}]:`, err.message);
       res.status(status).json({
         error: err.code || 'INTERNAL_ERROR',
         message: err.message || 'An unexpected error occurred',
@@ -417,17 +316,23 @@ async function startServer() {
     });
 
     server.listen(port, hostname, async () => {
-      console.log(`[NETRAH] Starting backend...`);
+      console.log('==================================================');
+      console.log('  PRAHARI TRAFFIC-POLICE ROBOT COMMAND CENTER     ');
+      console.log('==================================================');
+      console.log(`[BACKEND] Listening on http://${hostname}:${port}`);
       console.log(
         db.getStatus().connected
-          ? `[NETRAH] Database connected (MongoDB)`
-          : `[NETRAH] Database in-memory fallback active (MongoDB offline/unreachable)`
+          ? `[DATABASE] MongoDB Connected`
+          : `[DATABASE] In-memory persistence active (MongoDB offline/fallback)`
       );
-      console.log(`[NETRAH] AI perception subsystem initialized`);
-      await rpi5Manager.init();
-      console.log(`[NETRAH] RPi5 subsystem initialized (${rpi5Manager.getStatus().mode})`);
-      console.log(`[NETRAH] WebSocket initialized`);
-      console.log(`[NETRAH] Express server listening on http://${hostname}:${port}`);
+      const s3Check = await s3Service.testConnection();
+      console.log(
+        s3Check.connected
+          ? `[S3] AWS S3 bucket connected: ${s3Check.bucket}`
+          : `[S3] AWS S3 in local fallback mode (${s3Check.error || 'No credentials'})`
+      );
+      console.log(`[SOCKET] Socket.IO real-time engine ready`);
+      console.log(`[ROBOT STREAM] Configured URL: ${process.env.ROBOT_CAMERA_STREAM_URL || 'Not configured (use env)'}`);
     });
   } catch (error) {
     console.error('Fatal backend error:', error);

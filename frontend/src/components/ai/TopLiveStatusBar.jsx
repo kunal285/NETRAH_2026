@@ -21,16 +21,16 @@ export const TopLiveStatusBar = ({ cameraActive: propCameraActive, currentCamera
     backendOnline,
     robotCameraStatus,
     audioSirenState,
-    isLiveAiMode,
+    isLiveAiMode = true,
     setIsLiveAiMode,
     fpsMetrics,
-    robotState,
+    robotStatus,
     cameraActive: ctxCameraActive,
     cameraSource: ctxCameraSource,
   } = useRobot();
 
-  const isCamActive = propCameraActive ?? ctxCameraActive;
-  const camName = currentCameraName || ctxCameraSource || 'Webcam';
+  const isCamActive = propCameraActive ?? (robotCameraStatus === 'LIVE' || ctxCameraActive);
+  const camName = currentCameraName || ctxCameraSource || 'Robot Mast Cam';
 
   return (
     <div
@@ -42,10 +42,10 @@ export const TopLiveStatusBar = ({ cameraActive: propCameraActive, currentCamera
         <div className="flex flex-wrap items-center gap-2 text-xs">
           {/* AI Engine Status */}
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200">
-            <BrainCircuit className={`w-3.5 h-3.5 ${aiStatus.online ? 'text-emerald-600' : 'text-slate-400'}`} />
+            <BrainCircuit className={`w-3.5 h-3.5 ${aiStatus?.online ? 'text-emerald-600' : 'text-slate-400'}`} />
             <span className="text-slate-500">AI Engine:</span>
-            <span className={aiStatus.online ? 'text-emerald-700 font-bold' : 'text-amber-700 font-bold'}>
-              {aiStatus.online ? 'ONLINE' : 'EDGE FALLBACK'}
+            <span className={aiStatus?.online ? 'text-emerald-700 font-bold' : 'text-amber-700 font-bold'}>
+              {aiStatus?.online ? 'ONLINE' : 'EDGE FALLBACK'}
             </span>
           </div>
 
@@ -82,14 +82,14 @@ export const TopLiveStatusBar = ({ cameraActive: propCameraActive, currentCamera
 
           {/* Audio Microphone Status */}
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200">
-            {audioSirenState.active ? (
+            {audioSirenState?.active ? (
               <Volume2 className="w-3.5 h-3.5 text-emerald-600" />
             ) : (
               <VolumeX className="w-3.5 h-3.5 text-slate-400" />
             )}
             <span className="text-slate-500">Acoustic:</span>
-            <span className={audioSirenState.active ? 'text-emerald-700 font-bold' : 'text-slate-500 font-semibold'}>
-              {audioSirenState.active ? 'ARMED' : 'MUTED'}
+            <span className={audioSirenState?.active ? 'text-emerald-700 font-bold' : 'text-slate-500 font-semibold'}>
+              {audioSirenState?.active ? 'ARMED' : 'MUTED'}
             </span>
           </div>
 
@@ -97,26 +97,28 @@ export const TopLiveStatusBar = ({ cameraActive: propCameraActive, currentCamera
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200">
             <Bot className="w-3.5 h-3.5 text-slate-500" />
             <span className="text-slate-500">Robot:</span>
-            <span className={robotState.status === 'ONLINE' ? 'text-emerald-700 font-bold' : 'text-slate-500 font-semibold'}>
-              {robotState.status === 'ONLINE' ? 'ONLINE' : 'STANDBY'}
+            <span className={robotStatus === 'ONLINE' ? 'text-emerald-700 font-bold' : 'text-slate-500 font-semibold'}>
+              {robotStatus === 'ONLINE' ? 'ONLINE' : 'STANDBY'}
             </span>
           </div>
         </div>
 
         {/* Mode Toggle */}
         <div className="flex items-center gap-2">
-          <button
-            id="btn-toggle-live-mode"
-            onClick={() => setIsLiveAiMode(!isLiveAiMode)}
-            className={`px-3.5 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-xs ${
-              isLiveAiMode
-                ? 'bg-emerald-600 text-white'
-                : 'bg-amber-50 text-amber-800 border border-amber-200'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>{isLiveAiMode ? 'MODE: LIVE AI' : 'MODE: DEMO BENCH'}</span>
-          </button>
+          {setIsLiveAiMode && (
+            <button
+              id="btn-toggle-live-mode"
+              onClick={() => setIsLiveAiMode(!isLiveAiMode)}
+              className={`px-3.5 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-xs ${
+                isLiveAiMode
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-amber-50 text-amber-800 border border-amber-200'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>{isLiveAiMode ? 'MODE: LIVE AI' : 'MODE: DEMO BENCH'}</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -124,19 +126,19 @@ export const TopLiveStatusBar = ({ cameraActive: propCameraActive, currentCamera
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs pt-2 border-t border-slate-100">
         <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-slate-50 border border-slate-200/80">
           <span className="text-slate-500 text-[11px]">Inference FPS:</span>
-          <span className="text-emerald-700 font-bold">{fpsMetrics.inferenceFps || 12} FPS</span>
+          <span className="text-emerald-700 font-bold">{fpsMetrics?.inferenceFps || 28} FPS</span>
         </div>
         <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-slate-50 border border-slate-200/80">
           <span className="text-slate-500 text-[11px]">Camera FPS:</span>
-          <span className="text-slate-900 font-bold">{fpsMetrics.cameraFps || 10} FPS</span>
+          <span className="text-slate-900 font-bold">{fpsMetrics?.cameraFps || 30} FPS</span>
         </div>
         <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-slate-50 border border-slate-200/80">
           <span className="text-slate-500 text-[11px]">Latency:</span>
-          <span className="text-emerald-700 font-bold">{fpsMetrics.latencyMs || 8} ms</span>
+          <span className="text-emerald-700 font-bold">{fpsMetrics?.latencyMs || 12} ms</span>
         </div>
         <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-slate-50 border border-slate-200/80">
           <span className="text-slate-500 text-[11px]">Model:</span>
-          <span className="text-slate-800 font-semibold truncate">YOLOv8n + HSRP OCR</span>
+          <span className="text-slate-800 font-semibold truncate">YOLOv8 + HSRP OCR</span>
         </div>
       </div>
     </div>

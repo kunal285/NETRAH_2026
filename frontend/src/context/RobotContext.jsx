@@ -16,7 +16,9 @@ export const RobotProvider = ({ children }) => {
 
   // Real Hardware Device States (null / N/A until live packet arrives)
   const [isLiveDevice, setIsLiveDevice] = useState(false);
-  const [isDemoMode, setIsDemoMode] = useState(false);
+  const [isDemoMode, setIsDemoMode] = useState(
+    typeof window !== 'undefined' && process.env.NEXT_PUBLIC_DEMO_MODE === 'true'
+  );
 
   const [liveBattery, setLiveBattery] = useState({
     voltage: null,
@@ -63,41 +65,46 @@ export const RobotProvider = ({ children }) => {
     rssi: null,
     lastHeartbeatAt: null,
     uptimeSeconds: 0,
-    firmwareVersion: 'v2.4.0-ESP32',
+    firmwareVersion: 'v2.5.0-RPI4-ARM64',
     ipAddress: null,
   });
 
-  const [robotStatus, setRobotStatus] = useState('OFFLINE'); // 'ONLINE' | 'OFFLINE' | 'CONNECTING' | 'ERROR'
+  const [robotStatus, setRobotStatus] = useState('OFFLINE'); // 'ONLINE' | 'OFFLINE' | 'CONNECTING'
   const [controlMode, setControlMode] = useState('WEB'); // 'WEB' | 'RC' | 'AUTO' | 'DEMO'
   const [emergencyStop, setEmergencyStop] = useState(false);
-  const [safetyMessage, setSafetyMessage] = useState('Awaiting device connection...');
+  const [safetyMessage, setSafetyMessage] = useState('Awaiting device heartbeat...');
 
   // Command Acknowledgment State
   const [commandStatus, setCommandStatus] = useState('IDLE'); // 'IDLE' | 'PENDING' | 'SUCCESS' | 'FAILED'
   const [lastCommandAck, setLastCommandAck] = useState(null);
 
-  // Live Telemetry & History
+  // Live Telemetry & Event Stream
   const [telemetryHistory, setTelemetryHistory] = useState([]);
   const [systemEvents, setSystemEvents] = useState([]);
   const [latestDetection, setLatestDetection] = useState(null);
   const [activeAmbulance, setActiveAmbulance] = useState(null);
   const [socketConnected, setSocketConnected] = useState(false);
   const [backendOnline, setBackendOnline] = useState(true);
+  const [databaseStatus, setDatabaseStatus] = useState('disconnected');
+  const [s3Status, setS3Status] = useState('OK');
 
-  // Debug / Live Data Monitor Metrics
-  const [debugStats, setDebugStats] = useState({
-    packetsReceived: 0,
-    packetsRejected: 0,
-    lastPacketAt: null,
-    lastSenderIp: null,
-    lastSocketEvent: null,
-    rawTelemetryHistory: [],
+  // Dynamic Real-Time Counters (Calculated directly from real backend/socket data)
+  const [counters, setCounters] = useState({
+    totalDetections: 0,
+    anprPlates: 0,
+    ambulanceTriggers: 0,
+    vehiclesClassified: 0,
   });
+
+  // Diagnostics Metrics
+  const [lastHeartbeatTimestamp, setLastHeartbeatTimestamp] = useState(null);
+  const [lastTelemetryTimestamp, setLastTelemetryTimestamp] = useState(null);
+  const [lastDetectionTimestamp, setLastDetectionTimestamp] = useState(null);
   const [isDebugModalOpen, setIsDebugModalOpen] = useState(false);
 
   // Settings & Navigation
   const [settings, setSettings] = useState({
-    defaultSpeed: 50,
+    defaultSpeed: 60,
     maxSpeed: 90,
     emergencyStopDistance: 0.35,
     obstacleWarningDistance: 0.80,
@@ -108,12 +115,16 @@ export const RobotProvider = ({ children }) => {
   const [isEmergencyModalOpen, setIsEmergencyModalOpen] = useState(false);
 
   // Camera & AI Perception Suite
+  const cameraStreamEnv = process.env.NEXT_PUBLIC_ROBOT_CAMERA_STREAM_URL || '';
+  const [robotCameraStreamUrl, setRobotCameraStreamUrl] = useState(cameraStreamEnv);
   const [robotCameraStatus, setRobotCameraStatus] = useState('OFFLINE');
-  const [activeMediaStream, setActiveMediaStream] = useState(null);
-  const [cameraActive, setCameraActive] = useState(false);
-  const [cameraSource, setCameraSource] = useState('webcam');
-  const [isLiveAiMode, setIsLiveAiMode] = useState(true);
-  const [aiStatus, setAiStatus] = useState({ online: true, latencyMs: 7, models: {} });
+  const [aiStatus, setAiStatus] = useState({
+    online: true,
+    model: 'YOLOv8',
+    ocr: 'ONLINE',
+    inference: 'ACTIVE',
+    latencyMs: 12,
+  });
   const [liveDetections, setLiveDetections] = useState([]);
   const [liveEvents, setLiveEvents] = useState([]);
   const [anprList, setAnprList] = useState([]);
@@ -129,18 +140,6 @@ export const RobotProvider = ({ children }) => {
     lane_occupancy: { 'Lane 1': 0, 'Lane 2': 0, 'Lane 3': 0, 'Lane 4': 0 },
     congestion_level: 'LOW',
   });
-  const [crosswalkRisk, setCrosswalkRisk] = useState({
-    risk_level: 'SAFE',
-    score: null,
-    in_crosswalk_count: 0,
-    total_pedestrians: 0,
-    message: 'Crosswalk zone clear.',
-  });
-  const [wardenGesture, setWardenGesture] = useState({
-    gesture: 'NO ACTIVE GESTURE',
-    confidence: null,
-    description: 'Awaiting officer gesture',
-  });
   const [audioSirenState, setAudioSirenState] = useState({
     active: false,
     probability: 0.0,
@@ -150,75 +149,163 @@ export const RobotProvider = ({ children }) => {
   const [fpsMetrics, setFpsMetrics] = useState({
     cameraFps: 30,
     inferenceFps: 28,
-    latencyMs: 35,
   });
+  const [crosswalkRisk, setCrosswalkRisk] = useState({
+    risk_level: 'SAFE',
+    score: 0.12,
+    in_crosswalk_count: 0,
+    total_pedestrians: 0,
+    message: 'Crosswalk zone clear.',
+  });
+  const [wardenGesture, setWardenGesture] = useState({
+    gesture: 'NO ACTIVE GESTURE',
+    confidence: 0.95,
+    description: 'Awaiting officer gesture',
+  });
+  const [activeMediaStream, setActiveMediaStream] = useState(null);
+  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraSource, setCameraSource] = useState('robot');
+  const [isLiveAiMode, setIsLiveAiMode] = useState(true);
 
-  // Calculate Data Freshness Helper (Used across all components)
-  const formatFreshness = useCallback((timestamp, staleThresholdSeconds = 2.5) => {
+  // Calculate Data Freshness Helper
+  const formatFreshness = useCallback((timestamp, staleThresholdSeconds = 3.0) => {
     if (!timestamp) return { text: 'NO DATA', isStale: true, isNull: true };
     const diffSeconds = (Date.now() - new Date(timestamp).getTime()) / 1000;
     if (isNaN(diffSeconds) || diffSeconds < 0) return { text: '0.1s ago', isStale: false, isNull: false };
     if (diffSeconds > staleThresholdSeconds) {
       return { text: `STALE (${diffSeconds.toFixed(0)}s ago)`, isStale: true, isNull: false };
     }
-    return { text: `${diffSeconds < 1 ? (diffSeconds * 1000).toFixed(0) + 'ms' : diffSeconds.toFixed(1) + 's'} ago`, isStale: false, isNull: false };
+    return {
+      text: `${diffSeconds < 1 ? (diffSeconds * 1000).toFixed(0) + 'ms' : diffSeconds.toFixed(1) + 's'} ago`,
+      isStale: false,
+      isNull: false,
+    };
   }, []);
 
-  const [databaseStatus, setDatabaseStatus] = useState('disconnected');
-
-  // Fetch initial devices & configurations
+  // Fetch initial data & detection stats
   const fetchInitialData = useCallback(async () => {
     try {
-      const [healthRes, devListRes, ambData, settsData, aiStat, aiEvts, anprRes] = await Promise.allSettled([
+      const [healthRes, statsRes, detLogRes, anprRes, settsRes, camRes] = await Promise.allSettled([
         api.getHealth(),
-        fetch('/api/devices/all').then((r) => r.json()),
-        api.getActiveAmbulance(),
-        api.getSettings(),
-        api.getAiStatus(),
-        api.getAiEvents({ limit: 30 }),
+        fetch('/api/detections/stats').then((r) => r.json()),
+        api.getDetectionsLog({ limit: 30 }),
         api.getAnprList({}),
+        api.getSettings(),
+        api.getCameraSources(),
       ]);
 
       if (healthRes.status === 'fulfilled' && healthRes.value?.services) {
         setBackendOnline(true);
-        setDatabaseStatus(healthRes.value.services.database === 'connected' ? 'connected' : 'disconnected');
-      } else {
-        setBackendOnline(false);
-        setDatabaseStatus('disconnected');
+        setDatabaseStatus(healthRes.value.database === 'ok' ? 'connected' : 'fallback');
+        if (healthRes.value.robot === 'online') setRobotStatus('ONLINE');
       }
 
-      if (devListRes.status === 'fulfilled' && devListRes.value?.devices) {
-        setRobotsList(devListRes.value.devices);
+      if (statsRes.status === 'fulfilled' && statsRes.value?.stats) {
+        const s = statsRes.value.stats;
+        setCounters({
+          totalDetections: s.total || 0,
+          anprPlates: s.anpr || 0,
+          ambulanceTriggers: s.ambulance || 0,
+          vehiclesClassified: s.vehicle || 0,
+        });
       }
-      if (ambData.status === 'fulfilled' && ambData.value?.activeAmbulance) {
-        setActiveAmbulance(ambData.value.activeAmbulance);
+
+      if (detLogRes.status === 'fulfilled' && detLogRes.value?.data) {
+        setLiveEvents(detLogRes.value.data);
       }
-      if (settsData.status === 'fulfilled') setSettings(settsData.value);
-      if (aiStat.status === 'fulfilled') setAiStatus(aiStat.value);
-      if (aiEvts.status === 'fulfilled' && aiEvts.value?.events) setLiveEvents(aiEvts.value.events);
-      if (anprRes.status === 'fulfilled' && anprRes.value?.plates) setAnprList(anprRes.value.plates);
+
+      if (anprRes.status === 'fulfilled' && anprRes.value?.plates) {
+        setAnprList(anprRes.value.plates);
+      }
+
+      if (settsRes.status === 'fulfilled') {
+        setSettings(settsRes.value);
+      }
+
+      if (camRes.status === 'fulfilled' && camRes.value?.sources?.robot?.streamUrl) {
+        setRobotCameraStreamUrl(camRes.value.sources.robot.streamUrl);
+      }
     } catch (err) {
       console.warn('[RobotContext] Initial data sync warning:', err);
-      setBackendOnline(false);
-      setDatabaseStatus('disconnected');
     }
   }, []);
 
-  // Socket.IO real-time listeners for live device & AI streams
+  // Heartbeat Watchdog: Check if robot heartbeat is missing for > 4s
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (lastHeartbeatTimestamp && !isDemoMode) {
+        const elapsed = Date.now() - new Date(lastHeartbeatTimestamp).getTime();
+        if (elapsed > 4500 && robotStatus === 'ONLINE') {
+          console.warn('[Watchdog] Heartbeat timeout elapsed. Marking robot OFFLINE.');
+          setRobotStatus('OFFLINE');
+          setIsLiveDevice(false);
+        }
+      }
+    }, 1500);
+
+    return () => clearInterval(interval);
+  }, [lastHeartbeatTimestamp, isDemoMode, robotStatus]);
+
+  // Socket.IO Real-Time Engine Integration
   useEffect(() => {
     fetchInitialData();
     const socket = socketClient.connect();
 
-    const handleConnect = () => setSocketConnected(true);
-    const handleDisconnect = () => setSocketConnected(false);
+    const handleConnect = () => {
+      setSocketConnected(true);
+      setBackendOnline(true);
+    };
 
-    // 1. Live Device Telemetry
-    const handleDeviceTelemetry = (data) => {
+    const handleDisconnect = () => {
+      setSocketConnected(false);
+    };
+
+    // 1. Robot Status & Heartbeat
+    const handleRobotStatus = (data) => {
+      if (!data) return;
+      if (data.robotId && data.robotId !== selectedRobotId) return;
+      const status = data.status || 'ONLINE';
+      setRobotStatus(status);
+      setIsLiveDevice(status === 'ONLINE');
+      setLastHeartbeatTimestamp(data.timestamp || new Date().toISOString());
+    };
+
+    const handleHeartbeat = (hb) => {
+      if (!hb) return;
+      if (hb.robotId && hb.robotId !== selectedRobotId) return;
+      setRobotStatus('ONLINE');
+      setIsLiveDevice(true);
+      const nowIso = hb.timestamp ? (typeof hb.timestamp === 'number' ? new Date(hb.timestamp * 1000).toISOString() : hb.timestamp) : new Date().toISOString();
+      setLastHeartbeatTimestamp(nowIso);
+
+      if (hb.batteryVoltage || hb.batteryPercentage) {
+        setLiveBattery((prev) => ({
+          ...prev,
+          voltage: hb.batteryVoltage != null ? Number(hb.batteryVoltage) : prev.voltage,
+          percentage: hb.batteryPercentage != null ? Number(hb.batteryPercentage) : prev.percentage,
+          temperature: hb.temperature != null ? Number(hb.temperature) : prev.temperature,
+          updatedAt: nowIso,
+        }));
+      }
+
+      setLiveWifi({
+        rssi: hb.wifiRSSI != null ? Number(hb.wifiRSSI) : null,
+        lastHeartbeatAt: nowIso,
+        uptimeSeconds: hb.uptimeSeconds || 0,
+        firmwareVersion: hb.firmwareVersion || 'v2.5.0-RPI4-ARM64',
+        ipAddress: hb.ipAddress || null,
+      });
+    };
+
+    // 2. Robot Telemetry
+    const handleTelemetry = (data) => {
       if (!data) return;
       if (data.robotId && data.robotId !== selectedRobotId) return;
 
       setIsLiveDevice(true);
       setRobotStatus('ONLINE');
+      const nowIso = data.timestamp || new Date().toISOString();
+      setLastTelemetryTimestamp(nowIso);
 
       if (data.batteryVoltage != null || data.batteryPercentage != null) {
         setLiveBattery({
@@ -227,7 +314,7 @@ export const RobotProvider = ({ children }) => {
           current: data.batteryCurrent || data.totalCurrent,
           temperature: data.temperature,
           status: data.batteryVoltage < 31 ? 'CRITICAL' : data.batteryVoltage < 33 ? 'WARNING' : 'NORMAL',
-          updatedAt: data.timestamp || new Date().toISOString(),
+          updatedAt: nowIso,
         });
       }
 
@@ -245,18 +332,18 @@ export const RobotProvider = ({ children }) => {
             speed: data.rightMotorSpeed,
             status: (data.rightMotorCurrent || 0) > 20 ? 'WARNING' : 'NORMAL',
           },
-          updatedAt: data.timestamp || new Date().toISOString(),
+          updatedAt: nowIso,
         });
       }
 
       if (data.obstacleDistance != null || data.frontDistanceCm != null) {
         setLiveUltrasonic({
           frontDistanceCm: data.frontDistanceCm || (data.obstacleDistance != null ? Math.round(data.obstacleDistance * 100) : null),
-          rearDistanceCm: data.rearDistanceCm || (data.rearDistance != null ? Math.round(data.rearDistance * 100) : null),
+          rearDistanceCm: data.rearDistanceCm || null,
           frontDistanceM: data.obstacleDistance || (data.frontDistanceCm != null ? Number((data.frontDistanceCm / 100).toFixed(2)) : null),
-          rearDistanceM: data.rearDistance || (data.rearDistanceCm != null ? Number((data.rearDistanceCm / 100).toFixed(2)) : null),
+          rearDistanceM: data.rearDistance || null,
           status: data.obstacleDistance && data.obstacleDistance < 0.4 ? 'CRITICAL' : 'CLEAR',
-          updatedAt: data.timestamp || new Date().toISOString(),
+          updatedAt: nowIso,
         });
       }
 
@@ -266,279 +353,191 @@ export const RobotProvider = ({ children }) => {
       setTelemetryHistory((prev) => [...prev.slice(-40), data]);
     };
 
-    // 2. Live Device Heartbeat
-    const handleDeviceHeartbeat = (hb) => {
-      if (hb.robotId && hb.robotId !== selectedRobotId) return;
-      setIsLiveDevice(true);
-      setRobotStatus(hb.status || 'ONLINE');
-      setLiveWifi({
-        rssi: hb.wifiRSSI,
-        lastHeartbeatAt: hb.lastHeartbeatAt || new Date().toISOString(),
-        uptimeSeconds: hb.uptimeSeconds || 0,
-        firmwareVersion: hb.firmwareVersion || 'v2.4.0-ESP32',
-        ipAddress: hb.ipAddress,
+    // 3. New Live AI Detections (Instant Non-Polling Feed Update)
+    const handleDetectionNew = (det) => {
+      if (!det) return;
+      setLatestDetection(det);
+      setLastDetectionTimestamp(det.timestamp || new Date().toISOString());
+
+      // Prepend to live events stream
+      setLiveEvents((prev) => [det, ...prev.slice(0, 99)]);
+
+      // Dynamically increment counters
+      setCounters((prev) => {
+        const type = String(det.type).toUpperCase();
+        return {
+          totalDetections: prev.totalDetections + 1,
+          anprPlates: type === 'ANPR' ? prev.anprPlates + 1 : prev.anprPlates,
+          ambulanceTriggers: type === 'AMBULANCE' ? prev.ambulanceTriggers + 1 : prev.ambulanceTriggers,
+          vehiclesClassified: type === 'VEHICLE' ? prev.vehiclesClassified + 1 : prev.vehiclesClassified,
+        };
       });
-    };
 
-    // 3. Live Device GPS
-    const handleDeviceGps = (data) => {
-      if (data.robotId && data.robotId !== selectedRobotId) return;
-      if (data.gps) setLiveGps(data.gps);
-    };
+      // Update Live Visual Detections (Bounding Boxes)
+      const visualItem = {
+        id: det.id || `det-${Date.now()}`,
+        timestamp: det.timestamp || new Date().toISOString(),
+        type: det.type,
+        result: det.detectionInfo || det.result || det.type,
+        confidence: det.confidence || 0.92,
+        imageUrl: det.imageUrl,
+        bbox: det.bbox || (det.type === 'AMBULANCE' ? [20, 18, 55, 48] : det.type === 'ANPR' ? [65, 30, 22, 40] : [30, 30, 35, 35]),
+        details: det.details || {},
+        receivedAt: Date.now(),
+      };
+      setLiveDetections((prev) => [visualItem, ...prev.filter((p) => Date.now() - (p.receivedAt || 0) < 4000).slice(0, 10)]);
 
-    // 4. Live Device IMU
-    const handleDeviceImu = (data) => {
-      if (data.robotId && data.robotId !== selectedRobotId) return;
-      if (data.imu) setLiveImu(data.imu);
-    };
+      // If ANPR, add to plate table
+      if (det.type === 'ANPR' || det.plate) {
+        const plateRecord = {
+          id: det.id,
+          timestamp: det.timestamp || new Date().toISOString(),
+          plateNumber: det.plate || det.detectionInfo || 'MH12AB1234',
+          state: det.details?.state || 'Maharashtra',
+          vehicleType: det.details?.vehicleType || 'CAR',
+          confidence: det.confidence || 0.94,
+          imageUrl: det.imageUrl,
+          source: det.source || 'CAMERA-01',
+        };
+        setAnprList((prev) => [plateRecord, ...prev.slice(0, 99)]);
+      }
 
-    // 5. Live Device Status & Safety
-    const handleDeviceStatus = (data) => {
-      if (data.robotId && data.robotId !== selectedRobotId) return;
-      setRobotStatus(data.status);
-    };
-
-    const handleDeviceSafety = (data) => {
-      if (data.robotId && data.robotId !== selectedRobotId) return;
-      if (data.safety) {
-        setEmergencyStop(Boolean(data.safety.emergencyStop));
-        setSafetyMessage(data.safety.message || 'Safety update');
+      // If AMBULANCE, activate emergency alert
+      if (det.type === 'AMBULANCE') {
+        setActiveAmbulance(det);
+        setIsEmergencyModalOpen(true);
       }
     };
 
-    // 6. Device Command Acknowledgement
-    const handleDeviceAck = (ack) => {
+    // 4. Camera Status
+    const handleCameraStatus = (status) => {
+      if (status && status.status) {
+        setRobotCameraStatus(status.status.includes('LIVE') ? 'LIVE' : 'OFFLINE');
+      }
+      if (status && status.streamUrl) {
+        setRobotCameraStreamUrl(status.streamUrl);
+      }
+    };
+
+    // 5. Command Acknowledgments
+    const handleCommandAck = (ack) => {
       setLastCommandAck(ack);
-      if (ack.status === 'SUCCESS') {
-        setCommandStatus('SUCCESS');
-        setTimeout(() => setCommandStatus('IDLE'), 2000);
-      } else {
-        setCommandStatus('FAILED');
-        setTimeout(() => setCommandStatus('IDLE'), 3000);
-      }
+      setCommandStatus(ack.status === 'SUCCESS' || ack.status === 'COMMAND_SENT' ? 'SUCCESS' : 'FAILED');
+      setTimeout(() => setCommandStatus('IDLE'), 2000);
     };
 
-    // 7. System Alerts & Events
-    const handleSystemAlert = (alert) => {
-      setSystemEvents((prev) => [alert, ...prev.slice(0, 49)]);
-    };
-
-    // 8. AI Detection & ANPR
-    const handleAIDetection = (det) => setLatestDetection(det);
-    const handleAiEvent = (evt) => setLiveEvents((prev) => [evt, ...prev.slice(0, 49)]);
-    const handleAnpr = (anpr) => {
-      setAnprList((prev) => [{
-        id: anpr.eventId || `PLT-${Date.now()}`,
-        timestamp: anpr.timestamp || new Date().toISOString(),
-        plateNumber: anpr.metadata?.plateNumber || anpr.plateNumber || 'MH12AB1234',
-        state: anpr.metadata?.state || 'Maharashtra',
-        vehicleType: anpr.metadata?.vehicleType || 'CAR',
-        confidence: anpr.confidence || 0.94,
-        cameraId: anpr.cameraId || 'Optical 1080p',
-        lane: anpr.lane || 'Lane 1',
-        isDemo: anpr.isDemo,
-      }, ...prev.slice(0, 99)]);
-    };
-
-    const handleTrafficUpdate = (data) => {
-      if (data.counts) setTrafficMetrics(data.counts);
-    };
-
-    const handleCrosswalkRisk = (risk) => {
-      setCrosswalkRisk(risk.metadata || risk);
-    };
-
-    const handleAmbulanceAlert = (amb) => {
-      setActiveAmbulance(amb);
-      setIsEmergencyModalOpen(true);
-    };
-
-    const handleAmbulanceCleared = () => {
-      setActiveAmbulance(null);
-      setIsEmergencyModalOpen(false);
-    };
-
-    // Register all listeners
+    // Register all Socket.IO listeners
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
-    socket.on('device:telemetry', handleDeviceTelemetry);
-    socket.on('device:heartbeat', handleDeviceHeartbeat);
-    socket.on('device:battery', (d) => d.battery && setLiveBattery(d.battery));
-    socket.on('device:motor', (d) => d.motors && setLiveMotors(d.motors));
-    socket.on('device:sensor', (d) => d.ultrasonic && setLiveUltrasonic(d.ultrasonic));
-    socket.on('device:gps', handleDeviceGps);
-    socket.on('device:imu', handleDeviceImu);
-    socket.on('device:status', handleDeviceStatus);
-    socket.on('device:safety', handleDeviceSafety);
-    socket.on('device:mode', (d) => d.controlMode && setControlMode(d.controlMode));
-    socket.on('device:ack', handleDeviceAck);
-    socket.on('system:alert', handleSystemAlert);
 
-    socket.on('ai:detection', handleAIDetection);
-    socket.on('ai:event', handleAiEvent);
-    socket.on('ai:anpr', handleAnpr);
-    socket.on('ai:traffic_update', handleTrafficUpdate);
-    socket.on('ai:crosswalk_risk', handleCrosswalkRisk);
-    socket.on('ai:ambulance_alert', handleAmbulanceAlert);
-    socket.on('ai:ambulance_cleared', handleAmbulanceCleared);
+    socket.on('robot:status', handleRobotStatus);
+    socket.on('robot:heartbeat', handleHeartbeat);
+    socket.on('robot:telemetry', handleTelemetry);
+    socket.on('device:telemetry', handleTelemetry);
+    socket.on('device:heartbeat', handleHeartbeat);
+
+    socket.on('camera:status', handleCameraStatus);
+    socket.on('detection:new', handleDetectionNew);
+    socket.on('ai:detection', handleDetectionNew);
+    socket.on('robot:detection', handleDetectionNew);
+    socket.on('ambulance:detected', (det) => handleDetectionNew({ ...det, type: 'AMBULANCE' }));
+    socket.on('anpr:detected', (det) => handleDetectionNew({ ...det, type: 'ANPR' }));
+    socket.on('vehicle:detected', (det) => handleDetectionNew({ ...det, type: 'VEHICLE' }));
+
+    socket.on('command:ack', handleCommandAck);
+    socket.on('device:ack', handleCommandAck);
 
     return () => {
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
-      socket.off('device:telemetry', handleDeviceTelemetry);
-      socket.off('device:heartbeat', handleDeviceHeartbeat);
-      socket.off('device:gps', handleDeviceGps);
-      socket.off('device:imu', handleDeviceImu);
-      socket.off('device:status', handleDeviceStatus);
-      socket.off('device:safety', handleDeviceSafety);
-      socket.off('device:ack', handleDeviceAck);
-      socket.off('system:alert', handleSystemAlert);
-      socket.off('ai:detection', handleAIDetection);
-      socket.off('ai:event', handleAiEvent);
-      socket.off('ai:anpr', handleAnpr);
-      socket.off('ai:traffic_update', handleTrafficUpdate);
-      socket.off('ai:crosswalk_risk', handleCrosswalkRisk);
-      socket.off('ai:ambulance_alert', handleAmbulanceAlert);
-      socket.off('ai:ambulance_cleared', handleAmbulanceCleared);
+      socket.off('robot:status', handleRobotStatus);
+      socket.off('robot:heartbeat', handleHeartbeat);
+      socket.off('robot:telemetry', handleTelemetry);
+      socket.off('device:telemetry', handleTelemetry);
+      socket.off('device:heartbeat', handleHeartbeat);
+      socket.off('camera:status', handleCameraStatus);
+      socket.off('detection:new', handleDetectionNew);
+      socket.off('ai:detection', handleDetectionNew);
+      socket.off('robot:detection', handleDetectionNew);
+      socket.off('ambulance:detected');
+      socket.off('anpr:detected');
+      socket.off('vehicle:detected');
+      socket.off('command:ack', handleCommandAck);
+      socket.off('device:ack', handleCommandAck);
     };
   }, [fetchInitialData, selectedRobotId]);
 
-  // Teleoperation Command Dispatch with Acknowledgment Lifecycle
-  const sendControlCommand = async (command, speed) => {
-    setCommandStatus('PENDING');
-    try {
-      const res = await fetch('/api/robot/control', {
+  // Real-Time WebSocket Command Dispatch (Zero Page Refresh)
+  const sendControlCommand = useCallback(
+    async (command, speed = 60, vector = null) => {
+      setCommandStatus('PENDING');
+
+      if (command === 'DRIVE_VECTOR' && vector) {
+        socketClient.sendDriveVector(vector.throttle, vector.steering, speed, selectedRobotId);
+      } else if (command === 'STOP') {
+        socketClient.sendStop(selectedRobotId);
+      } else {
+        socketClient.sendMove(command, speed, selectedRobotId);
+      }
+
+      setCommandStatus('SUCCESS');
+      setTimeout(() => setCommandStatus('IDLE'), 1000);
+      return { success: true, command, speed };
+    },
+    [selectedRobotId]
+  );
+
+  const emergencyStopRobot = useCallback(
+    async (reason = 'Operator E-Stop') => {
+      setEmergencyStop(true);
+      socketClient.sendEmergencyStop(reason, selectedRobotId);
+      fetch('/api/robot/emergency-stop', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command, speed, robotId: selectedRobotId }),
-      }).then((r) => r.json());
+        body: JSON.stringify({ reason, robotId: selectedRobotId }),
+      }).catch(() => {});
+      return { success: true };
+    },
+    [selectedRobotId]
+  );
 
-      if (res.status === 'COMMAND_SENT') {
-        // Awaiting ESP32 hardware acknowledgement
-        return res;
-      } else {
-        setCommandStatus('SUCCESS');
-        setTimeout(() => setCommandStatus('IDLE'), 2000);
-        return res;
-      }
-    } catch (err) {
-      setCommandStatus('FAILED');
-      setTimeout(() => setCommandStatus('IDLE'), 3000);
-      throw err;
-    }
-  };
-
-  const emergencyStopRobot = async (reason) => {
-    setEmergencyStop(true);
-    return fetch('/api/robot/emergency-stop', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reason: reason || 'Operator E-Stop', robotId: selectedRobotId }),
-    }).then((r) => r.json());
-  };
-
-  const resetSafety = async () => {
+  const resetSafety = useCallback(async () => {
     setEmergencyStop(false);
-    return fetch('/api/robot/reset-safety', {
+    socketClient.sendResetSafety(selectedRobotId);
+    fetch('/api/robot/reset-safety', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ robotId: selectedRobotId }),
-    }).then((r) => r.json());
-  };
+    }).catch(() => {});
+    return { success: true };
+  }, [selectedRobotId]);
 
-  const changeControlMode = async (mode) => {
-    setControlMode(mode);
-    setIsDemoMode(mode === 'DEMO');
-    return fetch('/api/robot/mode', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode, robotId: selectedRobotId }),
-    }).then((r) => r.json());
-  };
-
-  const updateSettings = async (newSettings) => {
-    const res = await api.updateSettings(newSettings);
-    setSettings(res.settings || newSettings);
-    return res;
-  };
-
-  const resetSettings = async () => {
-    const res = await api.resetSettings();
-    setSettings(res.settings);
-    return res;
-  };
-
-  const triggerScenario = async (scenario) => {
-    return api.triggerSimulatorScenario(scenario);
-  };
-
-  // Backward compatible normalized state object for existing components
-  const robotState = {
-    status: robotStatus,
-    mode: controlMode,
-    demoMode: isDemoMode,
-    battery: {
-      voltage: liveBattery.voltage,
-      percentage: liveBattery.percentage,
-      current: liveBattery.current,
-      temperature: liveBattery.temperature,
-      status: liveBattery.status,
-      updatedAt: liveBattery.updatedAt,
+  const changeControlMode = useCallback(
+    async (mode) => {
+      setControlMode(mode);
+      setIsDemoMode(mode === 'DEMO');
+      socketClient.sendMode(mode, selectedRobotId);
+      fetch('/api/robot/mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode, robotId: selectedRobotId }),
+      }).catch(() => {});
+      return { success: true };
     },
-    leftMotor: {
-      current: liveMotors.left.current,
-      pwm: liveMotors.left.pwm,
-      speed: liveMotors.left.speed,
-      status: liveMotors.left.status,
-    },
-    rightMotor: {
-      current: liveMotors.right.current,
-      pwm: liveMotors.right.pwm,
-      speed: liveMotors.right.speed,
-      status: liveMotors.right.status,
-    },
-    ultrasonic: {
-      distance: liveUltrasonic.frontDistanceM,
-      distanceCm: liveUltrasonic.frontDistanceCm,
-      rearDistanceCm: liveUltrasonic.rearDistanceCm,
-      status: liveUltrasonic.status,
-      updatedAt: liveUltrasonic.updatedAt,
-    },
-    gps: liveGps,
-    imu: liveImu,
-    wifi: liveWifi,
-    safety: {
-      emergencyStop,
-      state: emergencyStop ? 'EMERGENCY_STOP' : robotStatus === 'ONLINE' ? 'SAFE' : 'OFFLINE',
-      message: safetyMessage,
-    },
-  };
+    [selectedRobotId]
+  );
 
-  const telemetry = {
-    batteryVoltage: liveBattery.voltage,
-    batteryPercentage: liveBattery.percentage,
-    batteryCurrent: liveBattery.current,
-    totalCurrent: liveBattery.current,
-    leftMotorCurrent: liveMotors.left.current,
-    rightMotorCurrent: liveMotors.right.current,
-    leftMotorSpeed: liveMotors.left.speed,
-    rightMotorSpeed: liveMotors.right.speed,
-    obstacleDistance: liveUltrasonic.frontDistanceM,
-    temperature: liveBattery.temperature,
-    wifiRSSI: liveWifi.rssi,
-    loopRateHz: 10,
-    internal5VRail: '5.02',
-    timestamp: liveBattery.updatedAt || new Date().toISOString(),
-  };
-
-  const triggerAIDetection = useCallback(async (type) => {
-    try {
-      const res = await api.triggerAIDetection(type);
-      return res;
-    } catch (err) {
-      console.error('Failed to trigger AI detection:', err);
-    }
-  }, []);
+  const triggerAIDetection = useCallback(
+    async (type) => {
+      try {
+        const res = await api.triggerAIDetection(type);
+        return res;
+      } catch (err) {
+        console.error('Failed to trigger AI detection:', err);
+      }
+    },
+    []
+  );
 
   const acknowledgeAmbulance = useCallback(async () => {
     try {
@@ -551,52 +550,74 @@ export const RobotProvider = ({ children }) => {
     }
   }, []);
 
+  const clearAiEvents = useCallback(async () => {
+    try {
+      await api.clearDetectionsLog();
+      setLiveEvents([]);
+      setAnprList([]);
+      setCounters({
+        totalDetections: 0,
+        anprPlates: 0,
+        ambulanceTriggers: 0,
+        vehiclesClassified: 0,
+      });
+    } catch (err) {
+      console.error('Failed to clear detections log:', err);
+    }
+  }, []);
+
   return (
     <RobotContext.Provider
       value={{
-        // Multi-Robot Selection
         robotsList,
         selectedRobotId,
         setSelectedRobotId,
 
-        // Data Source Indicators
+        // Live status & mode
         isLiveDevice,
         isDemoMode,
-        dataSource: isDemoMode ? 'DEMO DATA' : isLiveDevice && robotStatus === 'ONLINE' ? 'LIVE DEVICE' : 'OFFLINE / NO DATA',
+        setIsDemoMode,
+        dataSource: isDemoMode ? 'DEMO MODE' : isLiveDevice && robotStatus === 'ONLINE' ? 'LIVE ROBOT' : 'OFFLINE / NO DATA',
+        robotStatus,
+        controlMode,
+        emergencyStop,
+        safetyMessage,
+        commandStatus,
+        lastCommandAck,
 
-        // True Hardware States
+        // Telemetry
         liveBattery,
         liveMotors,
         liveUltrasonic,
         liveGps,
         liveImu,
         liveWifi,
-        robotStatus,
-        controlMode,
-        emergencyStop,
-        commandStatus,
-        lastCommandAck,
-
-        // Helpers
-        formatFreshness,
-
-        // Normalized Backward Compatible Objects
-        robotState,
-        telemetry,
         telemetryHistory,
         systemEvents,
         latestDetection,
         activeAmbulance,
-        socketConnected,
-        backendOnline,
-        databaseStatus,
-        settings,
-        activeTab,
-        setActiveTab,
-        isEmergencyModalOpen,
-        setIsEmergencyModalOpen,
+
+        // Dynamic Counters
+        counters,
+        totalDetections: counters.totalDetections,
+        anprPlates: counters.anprPlates,
+        ambulanceTriggers: counters.ambulanceTriggers,
+        vehiclesClassified: counters.vehiclesClassified,
+
+        // Camera & Perception
+        robotCameraStreamUrl,
+        setRobotCameraStreamUrl,
         robotCameraStatus,
         setRobotCameraStatus,
+        aiStatus,
+        liveDetections,
+        liveEvents,
+        anprList,
+        trafficMetrics,
+        crosswalkRisk,
+        setCrosswalkRisk,
+        wardenGesture,
+        setWardenGesture,
         activeMediaStream,
         setActiveMediaStream,
         cameraActive,
@@ -605,38 +626,35 @@ export const RobotProvider = ({ children }) => {
         setCameraSource,
         isLiveAiMode,
         setIsLiveAiMode,
-        aiStatus,
-        liveDetections,
-        liveEvents,
-        anprList,
-        trafficMetrics,
-        crosswalkRisk,
-        wardenGesture,
         audioSirenState,
-        setAudioSirenState,
         fpsMetrics,
         setFpsMetrics,
 
-        // Actions & Compatibility Aliases
-        sendControlCommand,
-        sendControl: sendControlCommand,
-        stopRobot: () => sendControlCommand('STOP', 0),
-        emergencyStopRobot,
-        emergencyStop: emergencyStopRobot,
-        resetSafety,
-        changeControlMode,
-        setMode: changeControlMode,
-        updateSettings,
-        resetSettings,
-        triggerScenario,
-        triggerAIDetection,
-        acknowledgeAmbulance,
-        telemetry: telemetryHistory,
-
-        // Live Data Monitor Debug
-        debugStats,
+        // Diagnostics
+        lastHeartbeatTimestamp,
+        lastTelemetryTimestamp,
+        lastDetectionTimestamp,
+        socketConnected,
+        backendOnline,
+        databaseStatus,
+        s3Status,
         isDebugModalOpen,
         setIsDebugModalOpen,
+        settings,
+        activeTab,
+        setActiveTab,
+        isEmergencyModalOpen,
+        setIsEmergencyModalOpen,
+
+        // Helpers & Dispatches
+        formatFreshness,
+        sendControlCommand,
+        emergencyStopRobot,
+        resetSafety,
+        changeControlMode,
+        triggerAIDetection,
+        acknowledgeAmbulance,
+        clearAiEvents,
       }}
     >
       {children}
