@@ -239,4 +239,45 @@ export const api = {
     if (!res.ok) throw new Error('Failed to save captured image');
     return res.json();
   },
+
+  // Snapshots (Section 6, 15, 19, 28, 29)
+  async takeCameraSnapshot(payload = {}) {
+    const res = await fetch(`${API_BASE}/robot/camera/snapshot`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Snapshot capture failed' }));
+      throw new Error(err.error || 'Failed to capture snapshot');
+    }
+    return res.json();
+  },
+
+  async getSnapshots(params = {}) {
+    const query = new URLSearchParams();
+    if (params.limit) query.append('limit', params.limit);
+    if (params.robotId) query.append('robotId', params.robotId);
+    const res = await fetch(`${API_BASE}/snapshots?${query.toString()}`);
+    if (!res.ok) throw new Error('Failed to fetch snapshots history');
+    return res.json();
+  },
+
+  async getSnapshotById(id) {
+    const res = await fetch(`${API_BASE}/snapshots/${id}`);
+    if (!res.ok) throw new Error('Failed to fetch snapshot');
+    return res.json();
+  },
+
+  async getSnapshotStatus() {
+    const res = await fetch(`${API_BASE}/camera/snapshot-status`);
+    if (!res.ok) throw new Error('Failed to fetch snapshot status');
+    return res.json();
+  },
+
+  async testCameraSnapshot() {
+    const res = await fetch(`${API_BASE}/dev/test-camera-snapshot`, { method: 'POST' });
+    if (!res.ok) throw new Error('Failed to run test camera snapshot');
+    return res.json();
+  },
 };

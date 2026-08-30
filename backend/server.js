@@ -11,6 +11,7 @@ import { deviceService } from './services/deviceService.js';
 import { robotService } from './services/robotService.js';
 import { detectionService } from './services/detectionService.js';
 import { inferenceService } from './services/ai/inferenceService.js';
+import { arduinoSerialService } from './services/arduinoSerialService.js';
 
 dotenv.config();
 
@@ -46,6 +47,7 @@ async function startServer() {
     });
 
     app.set('io', io);
+    arduinoSerialService.setSocketIO(io);
 
     // Mount Master API Router under /api
     app.use('/api', createApiRouter());
@@ -55,18 +57,22 @@ async function startServer() {
       const dbStatus = db.getStatus();
       const s3Status = await s3Service.testConnection();
       const robotState = deviceService.getDeviceState('PRAHARI-01');
+      const tel = arduinoSerialService.getTelemetry();
 
       res.json({
         success: true,
         service: 'PRAHARI Command Center Backend',
+        architecture: 'Arduino Nano + 2x BTS7960 + ESP32-CAM + Passive Caster',
         status: 'healthy',
         backend: 'ok',
         database: dbStatus.connected ? 'ok' : 'fallback',
         socket: 'ok',
         s3: s3Status.connected ? 'ok' : 'degraded',
         ai: 'ok',
+        arduinoNano: tel.arduinoStatus.toLowerCase(),
+        esp32Cam: process.env.ROBOT_CAMERA_STREAM_URL || process.env.ESP32_CAM_STREAM_URL ? 'streaming' : 'offline',
         robot: robotState.status.toLowerCase(),
-        camera: process.env.ROBOT_CAMERA_STREAM_URL ? 'streaming' : 'offline',
+        mode: tel.mode,
         timestamp: new Date().toISOString(),
       });
     });
@@ -211,14 +217,13 @@ async function startServer() {
           steering: data?.steering !== undefined ? Number(data.steering) : 0,
           speed: data?.speed || 70,
           timestamp: new Date().toISOString(),
-        };
-
-        io.emit('command:sent', commandPayload);
+        };        io.emit('command:sent', commandPayload);
         io.emit('device:command_out', commandPayload);
         robotService.sendControl('DRIVE_VECTOR', data?.speed || 70, {
           throttle: commandPayload.throttle,
           steering: commandPayload.steering,
         });
+        arduinoSerialService.sendDriveVector(commandPayload.throttle, commandPayload.steering, data?.speed || 70);
       });
 
       socket.on('control:move', (data) => {
@@ -259,6 +264,7 @@ async function startServer() {
         io.emit('command:sent', commandPayload);
         io.emit('device:command_out', commandPayload);
         robotService.stop();
+        arduinoSerialService.stopMotors();
       });
 
       socket.on('control:estop', (data) => {
@@ -278,8 +284,11 @@ async function startServer() {
           speed: 0,
           reason: devState.safety.message,
         });
+
         robotService.emergencyStop(devState.safety.message);
+        arduinoSerialService.emergencyStop(devState.safety.message);
       });
+;
 
       socket.on('control:reset_safety', (data) => {
         const targetId = (data?.robotId || 'PRAHARI-01').trim().toUpperCase();

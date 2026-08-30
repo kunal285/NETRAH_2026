@@ -2,11 +2,13 @@ import express from 'express';
 import crypto from 'crypto';
 import { deviceService } from '../services/deviceService.js';
 import { robotService } from '../services/robotService.js';
+import { arduinoSerialService } from '../services/arduinoSerialService.js';
 
 export const robotRouter = express.Router();
 
 /**
  * Helper to calculate differential / skid-steer motor PWM speeds
+ * Left Motor & Right Motor only — Passive front casters (NO front steering servo)
  */
 function computeSkidSteerMotors(command, speed = 50, vector = null) {
   const baseSpeed = Math.max(0, Math.min(100, Number(speed) || 50));
@@ -136,10 +138,8 @@ robotRouter.post('/command', async (req, res) => {
     const cmd = (command || (throttle !== undefined ? 'DRIVE_VECTOR' : 'STOP')).toUpperCase();
     const driveVector = vector || (throttle !== undefined || steering !== undefined ? { throttle, steering } : null);
 
-    // Calculate differential motor parameters
     const motorCalc = computeSkidSteerMotors(cmd, speed || 60, driveVector);
 
-    // Safety checks
     if (dev.safety?.emergencyStop) {
       if (io) io.emit('command:error', { error: 'EMERGENCY_STOP_ACTIVE', robotId: targetId });
       return res.status(409).json({ error: 'EMERGENCY_STOP_ACTIVE', message: 'Emergency Stop is currently active.' });
@@ -161,10 +161,15 @@ robotRouter.post('/command', async (req, res) => {
       io.emit('device:command_out', commandPayload);
     }
 
-    // Local simulator execution update
     robotService.sendControl(cmd, speed || 60, driveVector);
+    if (driveVector) {
+      arduinoSerialService.sendDriveVector(driveVector.throttle, driveVector.steering, speed || 60);
+    } else if (cmd === 'STOP') {
+      arduinoSerialService.stopMotors();
+    } else {
+      arduinoSerialService.sendMotorSpeeds(motorCalc.leftSpeed, motorCalc.rightSpeed);
+    }
 
-    // Await ack if device is live
     let ackResult = { status: 'COMMAND_SENT', success: true };
     if (dev.status === 'ONLINE') {
       deviceService.registerOutgoingCommand(commandId, cmd, 1500)
@@ -185,4 +190,78 @@ robotRouter.post('/command', async (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
+});
+
+/**
+ * POST /api/robot/emergency-stop
+ */
+robotRouter.post('/emergency-stop', (req, res) => {
+  const { robotId, reason } = req.body || {};
+  const targetId = (robotId || process.env.DEFAULT_ROBOT_ID || 'PRAHARI-01').trim().toUpperCase();
+  const dev = deviceService.getDeviceState(targetId);
+  const io = req.app.get('io');
+
+  dev.safety.emergencyStop = true;
+  dev.safety.state = 'EMERGENCY_STOP';
+  dev.safety.message = reason || 'Operator E-Stop Triggered';
+  dev.safety.updatedAt = new Date().toISOString();
+
+  if (io) {
+    io.emit('robot:safety', { robotId: targetId, safety: dev.safety, timestamp: dev.safety.updatedAt });
+    io.emit('device:command_out', {
+      commandId: `CMD-${crypto.randomUUID()}`,
+      robotId: targetId,
+      command: 'EMERGENCY_STOP',
+      speed: 0,
+      reason: dev.safety.message,
+    });
+  }
+
+  robotService.emergencyStop(dev.safety.message);
+  arduinoSerialService.emergencyStop(dev.safety.message);
+  res.json({ success: true, message: 'Emergency Stop Executed', safety: dev.safety });
+});
+
+/**
+ * POST /api/robot/reset-safety
+ */
+robotRouter.post('/reset-safety', (req, res) => {
+  const { robotId } = req.body || {};
+  const targetId = (robotId || process.env.DEFAULT_ROBOT_ID || 'PRAHARI-01').trim().toUpperCase();
+  const dev = deviceService.getDeviceState(targetId);
+  const io = req.app.get('io');
+
+  dev.safety.emergencyStop = false;
+  dev.safety.state = dev.status === 'ONLINE' ? 'SAFE' : 'OFFLINE';
+  dev.safety.message = 'Safety interlocks reset by operator';
+  dev.safety.updatedAt = new Date().toISOString();
+
+  if (io) {
+    io.emit('robot:safety', { robotId: targetId, safety: dev.safety, timestamp: dev.safety.updatedAt });
+  }
+
+  robotService.resetSafety();
+  arduinoSerialService.resetSafety();
+  res.json({ success: true, message: 'Safety Interlocks Reset', safety: dev.safety });
+});
+
+/**
+ * POST /api/robot/mode
+ */
+robotRouter.post('/mode', (req, res) => {
+  const { robotId, mode } = req.body || {};
+  const targetId = (robotId || process.env.DEFAULT_ROBOT_ID || 'PRAHARI-01').trim().toUpperCase();
+  const dev = deviceService.getDeviceState(targetId);
+  const io = req.app.get('io');
+
+  if (mode) {
+    dev.controlMode = String(mode).toUpperCase();
+    if (io) {
+      io.emit('device:mode', { robotId: targetId, controlMode: dev.controlMode, timestamp: new Date().toISOString() });
+    }
+    robotService.setMode(dev.controlMode);
+    arduinoSerialService.setMode(dev.controlMode);
+  }
+
+  res.json({ success: true, robotId: targetId, controlMode: dev.controlMode });
 });

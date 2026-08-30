@@ -9,6 +9,7 @@ import { StoredImage } from '../../models/StoredImage.js';
 
 import { ModelService } from './modelService.js';
 import { AudioProcessor } from './audioProcessor.js';
+import { detectionService } from '../detectionService.js';
 
 class InferenceService extends EventEmitter {
   constructor() {
@@ -264,7 +265,27 @@ class InferenceService extends EventEmitter {
       }
     }
 
-    // 4. Traffic Density Real-time Broadcast
+    // 4. Unified Detection Service Bridge
+    if (result.objects && result.objects.length > 0) {
+      for (const obj of result.objects) {
+        detectionService.processAndSaveDetection(
+          {
+            robotId: cameraId,
+            type: obj.class_name === 'plate' ? 'ANPR' : obj.class_name === 'ambulance' ? 'AMBULANCE' : 'VEHICLE',
+            vehicleClass: obj.class_name,
+            trackId: obj.track_id,
+            detectionInfo: obj.plate?.text || obj.class_name,
+            confidence: obj.confidence || 0.92,
+            plate: obj.plate?.text || null,
+            image: payload?.image || null,
+            isDemo,
+          },
+          io
+        ).catch(() => {});
+      }
+    }
+
+    // 5. Traffic Density Real-time Broadcast
     if (io) {
       io.emit('ai:traffic_update', {
         counts: this.inMemoryTrafficStats,

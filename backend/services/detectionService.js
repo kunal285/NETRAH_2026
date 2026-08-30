@@ -6,124 +6,219 @@ import { db } from '../config/db.js';
 /**
  * DetectionService
  * Persists and searches structured AI perception records:
- * - ANPR (Automatic Number Plate Recognition)
- * - Emergency Ambulance siren/visual detections
- * - Traffic vehicle types (Car, Bus, Bike, Truck)
- * - Pedestrian & human crosswalk events
- * Handles S3 uploads and database indexing.
+ * - Real-time vehicle tracking & classification (CAR, MOTORCYCLE, TRUCK, BUS, BICYCLE, OTHER)
+ * - ANPR (Automatic Number Plate Recognition) with Plate Crop Snapshots
+ * - Emergency Ambulance visual / flasher detection
+ * - Face AI recognition (Enrolled Personnel vs Unknown)
+ * Handles AWS S3 multi-crop uploads and database persistence.
  */
 class DetectionService {
   constructor() {
     this.detections = [];
-    this.recentDebounce = new Map(); // Key: `${type}_${info}` -> timestamp
+    this.trackedVehicles = new Map(); // trackId -> { vehicleClass, firstSeen, lastSeen }
+    this.stats = {
+      totalDetections: 0,
+      totalVehicles: 0,
+      cars: 0,
+      motorcycles: 0,
+      trucks: 0,
+      buses: 0,
+      bicycles: 0,
+      other: 0,
+      anprPlates: 0,
+      ambulances: 0,
+      faces: 0,
+    };
+
+    this.recentDebounce = new Map(); // Key: `${robotId}_${type}_${info}` -> timestamp
     this.debounceMs = Number(process.env.DETECTION_IMAGE_COOLDOWN_MS || 2000);
 
     // Periodic cleanup of debounce cache
     setInterval(() => {
       const now = Date.now();
       for (const [key, ts] of this.recentDebounce.entries()) {
-        if (now - ts > 10000) {
+        if (now - ts > 15000) {
           this.recentDebounce.delete(key);
         }
       }
     }, 5000);
   }
 
-  /**
-   * Normalize detection type to uppercase standard:
-   * VEHICLE, AMBULANCE, ANPR, FACE, PEDESTRIAN
-   */
   normalizeType(type = '') {
     const t = String(type).toUpperCase();
     if (t.includes('PLATE') || t.includes('ANPR')) return 'ANPR';
     if (t.includes('AMBULANCE') || t.includes('EMERGENCY')) return 'AMBULANCE';
     if (t.includes('FACE') || t.includes('PERSON') || t.includes('WARDEN')) return 'FACE';
-    if (t.includes('CAR') || t.includes('BUS') || t.includes('TRUCK') || t.includes('MOTORCYCLE') || t.includes('VEHICLE')) return 'VEHICLE';
+    if (t.includes('CAR') || t.includes('BUS') || t.includes('TRUCK') || t.includes('MOTORCYCLE') || t.includes('BIKE') || t.includes('VEHICLE')) return 'VEHICLE';
     return t || 'VEHICLE';
   }
 
+  normalizeVehicleClass(vClass = '') {
+    const vc = String(vClass).toUpperCase();
+    if (vc.includes('MOTORCYCLE') || vc.includes('BIKE') || vc.includes('TWO_WHEELER')) return 'MOTORCYCLE';
+    if (vc.includes('TRUCK')) return 'TRUCK';
+    if (vc.includes('BUS')) return 'BUS';
+    if (vc.includes('BICYCLE') || vc.includes('CYCLE')) return 'BICYCLE';
+    if (vc.includes('CAR') || vc.includes('AUTO') || vc.includes('SEDAN') || vc.includes('SUV')) return 'CAR';
+    return 'OTHER';
+  }
+
+  _parseImageBuffer(imageInput) {
+    if (!imageInput) return null;
+    if (Buffer.isBuffer(imageInput)) return imageInput;
+    if (typeof imageInput === 'string') {
+      const cleanBase64 = imageInput.replace(/^data:image\/\w+;base64,/, '');
+      return Buffer.from(cleanBase64, 'base64');
+    }
+    return null;
+  }
+
   /**
-   * Ingest and persist detection event with S3 image storage
+   * Ingest, process, upload snapshots to AWS S3, and broadcast detection event
    */
   async processAndSaveDetection(rawDetection, io = null) {
     const id = rawDetection.id || `evt_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
     const robotId = (rawDetection.robotId || process.env.DEFAULT_ROBOT_ID || 'PRAHARI-01').trim().toUpperCase();
     const type = this.normalizeType(rawDetection.type);
-    const detectionInfo = rawDetection.detectionInfo || rawDetection.result || rawDetection.label || rawDetection.details?.plateNumber || type;
+    const vehicleClass = this.normalizeVehicleClass(rawDetection.vehicleClass || rawDetection.class || (type === 'VEHICLE' ? rawDetection.detectionInfo : ''));
+    const trackId = rawDetection.trackId !== undefined ? Number(rawDetection.trackId) : null;
+    const detectionInfo = rawDetection.detectionInfo || rawDetection.result || rawDetection.label || rawDetection.plate || type;
     const confidence = Number(rawDetection.confidence !== undefined ? rawDetection.confidence : 0.92);
     const source = rawDetection.source || rawDetection.camera || rawDetection.cameraId || 'CAMERA-01';
     const timestamp = rawDetection.timestamp || new Date().toISOString();
-    const plate = rawDetection.plate || (type === 'ANPR' ? detectionInfo : null) || rawDetection.details?.plateNumber || null;
-    const location = rawDetection.location || 'Chowk 01';
+    const plate = rawDetection.plate || (type === 'ANPR' ? detectionInfo : null) || null;
+    const personId = rawDetection.personId || null;
+    const personName = rawDetection.personName || (type === 'FACE' ? detectionInfo : null);
 
     let imageKey = rawDetection.imageKey || null;
     let imageUrl = rawDetection.imageUrl || null;
+    let plateImageKey = rawDetection.plateImageKey || null;
+    let plateImageUrl = rawDetection.plateImageUrl || null;
+    let faceImageKey = rawDetection.faceImageKey || null;
+    let faceImageUrl = rawDetection.faceImageUrl || null;
     let imageUploadStatus = rawDetection.imageUploadStatus || 'PENDING';
 
-    // Check debounce to avoid uploading hundreds of identical frames in a short window
-    const debounceKey = `${robotId}_${type}_${detectionInfo}`;
+    // Check debounce to avoid uploading hundreds of duplicate images
+    const debounceKey = `${robotId}_${type}_${trackId || detectionInfo}`;
     const lastSeen = this.recentDebounce.get(debounceKey);
     const now = Date.now();
-    const shouldUploadImage = !lastSeen || (now - lastSeen >= this.debounceMs);
+    const shouldUpload = !lastSeen || (now - lastSeen >= this.debounceMs);
     this.recentDebounce.set(debounceKey, now);
 
-    // Handle base64 or buffer image upload to AWS S3
-    if (rawDetection.image && shouldUploadImage) {
+    // 1. Upload Full Frame Snapshot
+    const fullBuffer = this._parseImageBuffer(rawDetection.image || rawDetection.fullFrame);
+    if (fullBuffer && shouldUpload) {
       try {
         imageUploadStatus = 'UPLOADING';
-        let buffer = null;
-        if (Buffer.isBuffer(rawDetection.image)) {
-          buffer = rawDetection.image;
-        } else if (typeof rawDetection.image === 'string') {
-          const cleanBase64 = rawDetection.image.replace(/^data:image\/\w+;base64,/, '');
-          buffer = Buffer.from(cleanBase64, 'base64');
-        }
-
-        if (buffer) {
-          console.log(`[AI] Detection generated: ${type} - ${detectionInfo} (${Math.round(confidence * 100)}%)`);
-          const s3Result = await s3Service.uploadDetectionImage({
-            imageBuffer: buffer,
-            detectionId: id,
-            robotId,
-            mimeType: 'image/jpeg',
-          });
-
-          if (s3Result.uploadStatus === 'UPLOADED') {
-            imageKey = s3Result.key;
-            imageUrl = s3Result.url || `/api/detections/${id}/image`;
-            imageUploadStatus = 'UPLOADED';
-          } else {
-            imageUploadStatus = 'FAILED';
-            imageUrl = `/api/detections/${id}/image`;
-          }
+        const s3Res = await s3Service.uploadDetectionImage({
+          imageBuffer: fullBuffer,
+          detectionId: id,
+          robotId,
+          subType: 'full',
+          mimeType: 'image/jpeg',
+        });
+        if (s3Res.uploadStatus === 'UPLOADED') {
+          imageKey = s3Res.key;
+          imageUrl = s3Res.url || `/api/detections/${id}/image?subType=full`;
+          imageUploadStatus = 'UPLOADED';
+        } else {
+          imageUploadStatus = 'FAILED';
+          imageUrl = `/api/detections/${id}/image?subType=full`;
         }
       } catch (err) {
-        console.error(`[S3] Error processing detection image:`, err.message);
+        console.error(`[S3] Error uploading full image for ${id}:`, err.message);
         imageUploadStatus = 'FAILED';
       }
-    } else if (!imageKey && rawDetection.imageUrl) {
-      imageUrl = rawDetection.imageUrl;
-      imageUploadStatus = 'UPLOADED';
     }
+
+    // 2. Upload Plate Crop Snapshot
+    const plateBuffer = this._parseImageBuffer(rawDetection.plateImage || rawDetection.plateCrop);
+    if (plateBuffer && shouldUpload) {
+      try {
+        const s3PlateRes = await s3Service.uploadDetectionImage({
+          imageBuffer: plateBuffer,
+          detectionId: id,
+          robotId,
+          subType: 'plate',
+          mimeType: 'image/jpeg',
+        });
+        if (s3PlateRes.uploadStatus === 'UPLOADED') {
+          plateImageKey = s3PlateRes.key;
+          plateImageUrl = s3PlateRes.url || `/api/detections/${id}/image?subType=plate`;
+        }
+      } catch (err) {
+        console.warn(`[S3] Plate crop upload notice:`, err.message);
+      }
+    }
+
+    // 3. Upload Face Crop Snapshot
+    const faceBuffer = this._parseImageBuffer(rawDetection.faceImage || rawDetection.faceCrop);
+    if (faceBuffer && shouldUpload) {
+      try {
+        const s3FaceRes = await s3Service.uploadDetectionImage({
+          imageBuffer: faceBuffer,
+          detectionId: id,
+          robotId,
+          subType: 'face',
+          mimeType: 'image/jpeg',
+        });
+        if (s3FaceRes.uploadStatus === 'UPLOADED') {
+          faceImageKey = s3FaceRes.key;
+          faceImageUrl = s3FaceRes.url || `/api/detections/${id}/image?subType=face`;
+        }
+      } catch (err) {
+        console.warn(`[S3] Face crop upload notice:`, err.message);
+      }
+    }
+
+    // Update vehicle stats tracking
+    if (type === 'VEHICLE' || type === 'AMBULANCE') {
+      if (trackId !== null) {
+        if (!this.trackedVehicles.has(trackId)) {
+          this.trackedVehicles.set(trackId, { vehicleClass, firstSeen: now, lastSeen: now });
+          this.stats.totalVehicles++;
+          if (vehicleClass === 'CAR') this.stats.cars++;
+          else if (vehicleClass === 'MOTORCYCLE') this.stats.motorcycles++;
+          else if (vehicleClass === 'TRUCK') this.stats.trucks++;
+          else if (vehicleClass === 'BUS') this.stats.buses++;
+          else if (vehicleClass === 'BICYCLE') this.stats.bicycles++;
+          else this.stats.other++;
+        }
+      } else {
+        this.stats.totalVehicles++;
+      }
+    }
+
+    if (type === 'ANPR') this.stats.anprPlates++;
+    if (type === 'AMBULANCE') this.stats.ambulances++;
+    if (type === 'FACE') this.stats.faces++;
+    this.stats.totalDetections++;
 
     const detectionRecord = {
       id,
       robotId,
       type,
+      vehicleClass: type === 'VEHICLE' || type === 'AMBULANCE' ? vehicleClass : null,
+      trackId,
       detectionInfo,
+      plate,
+      personId,
+      personName,
       confidence: Number(confidence.toFixed(2)),
       source,
       timestamp,
       imageKey,
-      imageUrl: imageUrl || (imageKey ? `/api/detections/${id}/image` : null),
-      plate,
-      location,
+      imageUrl: imageUrl || (imageKey ? `/api/detections/${id}/image?subType=full` : null),
+      plateImageKey,
+      plateImageUrl: plateImageUrl || (plateImageKey ? `/api/detections/${id}/image?subType=plate` : null),
+      faceImageKey,
+      faceImageUrl: faceImageUrl || (faceImageKey ? `/api/detections/${id}/image?subType=face` : null),
       imageUploadStatus,
       details: rawDetection.details || {},
       isDemo: Boolean(rawDetection.isDemo),
     };
 
-    // Store in-memory buffer
+    // Store in-memory buffer (limit 500)
     this.detections.unshift(detectionRecord);
     if (this.detections.length > 500) {
       this.detections = this.detections.slice(0, 500);
@@ -136,31 +231,39 @@ class DetectionService {
           _id: id,
           robotId,
           type: type.toLowerCase(),
+          vehicleClass,
+          trackId,
           result: detectionInfo,
           confidence,
           cameraSource: source,
           timestamp: new Date(timestamp),
           imageKey,
           imageUrl: detectionRecord.imageUrl,
+          plateImageKey,
+          plateImageUrl: detectionRecord.plateImageUrl,
+          faceImageKey,
+          faceImageUrl: detectionRecord.faceImageUrl,
           imageUploadStatus,
           isDemo: detectionRecord.isDemo,
           details: {
             ...detectionRecord.details,
             plateNumber: plate,
+            personId,
+            personName,
           },
         });
-        console.log(`[DB] Detection saved: ${id} (${type})`);
+        console.log(`[DB] Detection saved: ${id} (${type} - ${detectionInfo})`);
       } catch (dbErr) {
-        console.warn(`[DB] Fallback save warning (Detection stored in memory): ${dbErr.message}`);
+        console.warn(`[DB] Fallback save warning: ${dbErr.message}`);
       }
     }
 
     // Broadcast over Socket.IO
     if (io) {
-      console.log(`[SOCKET] Emitting detection:new for ${id} (${type})`);
       io.emit('detection:new', detectionRecord);
       io.emit('ai:detection', detectionRecord);
       io.emit('robot:detection', detectionRecord);
+      io.emit('vehicle:count', this.stats);
 
       if (type === 'AMBULANCE') {
         io.emit('ambulance:detected', detectionRecord);
@@ -168,6 +271,8 @@ class DetectionService {
       } else if (type === 'ANPR') {
         io.emit('anpr:detected', detectionRecord);
         io.emit('ai:anpr', detectionRecord);
+      } else if (type === 'FACE') {
+        io.emit('face:detected', detectionRecord);
       } else if (type === 'VEHICLE') {
         io.emit('vehicle:detected', detectionRecord);
       }
@@ -187,42 +292,32 @@ class DetectionService {
 
     let results = [...this.detections];
 
-    // Filter by type
     if (filterType !== 'ALL') {
       results = results.filter((d) => d.type === filterType);
     }
 
-    // Filter by search query (plate, type, detectionInfo, source)
     if (searchQuery) {
       results = results.filter((d) => {
         const dInfo = (d.detectionInfo || '').toLowerCase();
         const dPlate = (d.plate || '').toLowerCase();
         const dType = (d.type || '').toLowerCase();
         const dSrc = (d.source || '').toLowerCase();
+        const dPerson = (d.personName || '').toLowerCase();
         return (
           dInfo.includes(searchQuery) ||
           dPlate.includes(searchQuery) ||
           dType.includes(searchQuery) ||
-          dSrc.includes(searchQuery)
+          dSrc.includes(searchQuery) ||
+          dPerson.includes(searchQuery)
         );
       });
     }
 
-    // Sorting
-    if (options.sortBy === 'time_asc') {
-      results.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-    } else if (options.sortBy === 'confidence_desc') {
-      results.sort((a, b) => b.confidence - a.confidence);
-    } else {
-      // Default: newest first
-      results.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    }
+    results.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
     const total = results.length;
     const start = (page - 1) * limit;
     const paginated = results.slice(start, start + limit);
-
-    const stats = this.getStats();
 
     return {
       success: true,
@@ -231,61 +326,67 @@ class DetectionService {
       page,
       limit,
       totalPages: Math.ceil(total / limit) || 1,
-      stats,
+      stats: this.getStats(),
     };
   }
 
-  /**
-   * Return dynamic count stats
-   */
   getStats() {
     return {
-      total: this.detections.length,
-      anpr: this.detections.filter((d) => d.type === 'ANPR').length,
-      ambulance: this.detections.filter((d) => d.type === 'AMBULANCE').length,
-      vehicle: this.detections.filter((d) => d.type === 'VEHICLE').length,
-      face: this.detections.filter((d) => d.type === 'FACE').length,
+      ...this.stats,
+      total: this.stats.totalDetections,
+      anpr: this.stats.anprPlates,
+      ambulance: this.stats.ambulances,
+      vehicle: this.stats.totalVehicles,
+      face: this.stats.faces,
     };
   }
 
-  /**
-   * Find single detection by ID
-   */
   getDetectionById(id) {
     return this.detections.find((d) => d.id === id);
   }
 
-  /**
-   * Clear all detections: deletes S3 objects and database records
-   */
   async clearDetections() {
-    const s3Keys = this.detections
-      .map((d) => d.imageKey)
-      .filter((k) => typeof k === 'string' && k.length > 0);
+    const s3Keys = [];
+    for (const d of this.detections) {
+      if (d.imageKey) s3Keys.push(d.imageKey);
+      if (d.plateImageKey) s3Keys.push(d.plateImageKey);
+      if (d.faceImageKey) s3Keys.push(d.faceImageKey);
+    }
 
-    // Delete S3 images
     if (s3Keys.length > 0) {
       try {
         console.log(`[S3] Deleting ${s3Keys.length} detection images on Clear Log...`);
         await s3Service.deleteDetectionImages(s3Keys);
       } catch (err) {
-        console.warn(`[S3] Clear log S3 deletion warning:`, err.message);
+        console.warn(`[S3] Clear log S3 deletion notice:`, err.message);
       }
     }
 
-    // Clear in-memory buffer
     this.detections = [];
+    this.trackedVehicles.clear();
+    this.stats = {
+      totalDetections: 0,
+      totalVehicles: 0,
+      cars: 0,
+      motorcycles: 0,
+      trucks: 0,
+      buses: 0,
+      bicycles: 0,
+      other: 0,
+      anprPlates: 0,
+      ambulances: 0,
+      faces: 0,
+    };
 
-    // Clear database collection if connected
     if (db.getStatus().connected) {
       try {
         await Detection.deleteMany({});
       } catch (err) {
-        console.warn(`[DB] Clear log DB deletion warning:`, err.message);
+        console.warn(`[DB] Clear log DB deletion notice:`, err.message);
       }
     }
 
-    return { success: true, message: 'Detection records and S3 images cleared' };
+    return { success: true, message: 'All detection records and S3 images cleared' };
   }
 }
 

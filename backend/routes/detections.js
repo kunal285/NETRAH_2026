@@ -46,27 +46,36 @@ detectionRouter.get('/:id', async (req, res, next) => {
 
 /**
  * GET /api/detections/:id/image
- * Serve or redirect to signed AWS S3 image URL for a detection
+ * Serve or redirect to signed AWS S3 image URL for a detection (supports subType: full, plate, face)
  */
 detectionRouter.get('/:id/image', async (req, res, next) => {
   try {
+    const subType = req.query.subType || 'full';
     const detection = detectionService.getDetectionById(req.params.id);
-    if (!detection || !detection.imageKey) {
+
+    let imageKey = null;
+    if (detection) {
+      if (subType === 'plate' && detection.plateImageKey) imageKey = detection.plateImageKey;
+      else if (subType === 'face' && detection.faceImageKey) imageKey = detection.faceImageKey;
+      else imageKey = detection.imageKey;
+    }
+
+    if (!imageKey) {
       return res.status(404).json({
         error: 'IMAGE_NOT_FOUND',
-        message: 'No image attached to this detection record',
+        message: `No ${subType} image attached to this detection record`,
       });
     }
 
     // Generate fresh signed URL (valid for 1 hour)
-    const signedUrl = await s3Service.getDetectionImageUrl(detection.imageKey, 3600);
+    const signedUrl = await s3Service.getDetectionImageUrl(imageKey, 3600);
     if (signedUrl && signedUrl.startsWith('http')) {
       return res.redirect(signedUrl);
     }
 
     // Direct stream fallback
     try {
-      const s3Stream = await s3Service.getObjectStream(detection.imageKey);
+      const s3Stream = await s3Service.getObjectStream(imageKey);
       res.setHeader('Content-Type', s3Stream.ContentType || 'image/jpeg');
       res.setHeader('Cache-Control', 'public, max-age=86400');
       s3Stream.Body.pipe(res);

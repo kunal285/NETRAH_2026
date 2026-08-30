@@ -70,7 +70,10 @@ export const RobotProvider = ({ children }) => {
   });
 
   const [robotStatus, setRobotStatus] = useState('OFFLINE'); // 'ONLINE' | 'OFFLINE' | 'CONNECTING'
+  const [arduinoStatus, setArduinoStatus] = useState('CONNECTED'); // 'CONNECTED' | 'DISCONNECTED'
+  const [rcStatus, setRcStatus] = useState('DISCONNECTED'); // 'CONNECTED' | 'DISCONNECTED'
   const [controlMode, setControlMode] = useState('WEB'); // 'WEB' | 'RC' | 'AUTO' | 'DEMO'
+  const [speedLimiter, setSpeedLimiter] = useState(70); // 25, 50, 75, 100
   const [emergencyStop, setEmergencyStop] = useState(false);
   const [safetyMessage, setSafetyMessage] = useState('Awaiting device heartbeat...');
 
@@ -88,12 +91,20 @@ export const RobotProvider = ({ children }) => {
   const [databaseStatus, setDatabaseStatus] = useState('disconnected');
   const [s3Status, setS3Status] = useState('OK');
 
-  // Dynamic Real-Time Counters (Calculated directly from real backend/socket data)
+  // Dynamic Real-Time Counters
   const [counters, setCounters] = useState({
     totalDetections: 0,
+    totalVehicles: 0,
+    cars: 0,
+    motorcycles: 0,
+    trucks: 0,
+    buses: 0,
+    bicycles: 0,
+    other: 0,
     anprPlates: 0,
     ambulanceTriggers: 0,
     vehiclesClassified: 0,
+    faces: 0,
   });
 
   // Diagnostics Metrics
@@ -128,6 +139,8 @@ export const RobotProvider = ({ children }) => {
   const [liveDetections, setLiveDetections] = useState([]);
   const [liveEvents, setLiveEvents] = useState([]);
   const [anprList, setAnprList] = useState([]);
+  const [snapshotsList, setSnapshotsList] = useState([]);
+  const [latestSnapshot, setLatestSnapshot] = useState(null);
   const [trafficMetrics, setTrafficMetrics] = useState({
     total_vehicles: 0,
     total_counted_cumulative: 0,
@@ -185,28 +198,42 @@ export const RobotProvider = ({ children }) => {
   // Fetch initial data & detection stats
   const fetchInitialData = useCallback(async () => {
     try {
-      const [healthRes, statsRes, detLogRes, anprRes, settsRes, camRes] = await Promise.allSettled([
+      const [healthRes, statsRes, detLogRes, anprRes, settsRes, camRes, snapsRes] = await Promise.allSettled([
         api.getHealth(),
         fetch('/api/detections/stats').then((r) => r.json()),
         api.getDetectionsLog({ limit: 30 }),
         api.getAnprList({}),
         api.getSettings(),
         api.getCameraSources(),
+        api.getSnapshots({ limit: 30 }),
       ]);
 
-      if (healthRes.status === 'fulfilled' && healthRes.value?.services) {
+      if (snapsRes.status === 'fulfilled' && snapsRes.value?.snapshots) {
+        setSnapshotsList(snapsRes.value.snapshots);
+      }
+
+      if (healthRes.status === 'fulfilled' && healthRes.value) {
         setBackendOnline(true);
         setDatabaseStatus(healthRes.value.database === 'ok' ? 'connected' : 'fallback');
         if (healthRes.value.robot === 'online') setRobotStatus('ONLINE');
+        if (healthRes.value.s3 === 'ok') setS3Status('OK');
       }
 
       if (statsRes.status === 'fulfilled' && statsRes.value?.stats) {
         const s = statsRes.value.stats;
         setCounters({
-          totalDetections: s.total || 0,
-          anprPlates: s.anpr || 0,
-          ambulanceTriggers: s.ambulance || 0,
-          vehiclesClassified: s.vehicle || 0,
+          totalDetections: s.total || s.totalDetections || 0,
+          totalVehicles: s.totalVehicles || s.vehicle || 0,
+          cars: s.cars || 0,
+          motorcycles: s.motorcycles || 0,
+          trucks: s.trucks || 0,
+          buses: s.buses || 0,
+          bicycles: s.bicycles || 0,
+          other: s.other || 0,
+          anprPlates: s.anpr || s.anprPlates || 0,
+          ambulanceTriggers: s.ambulance || s.ambulances || 0,
+          vehiclesClassified: s.vehicle || s.totalVehicles || 0,
+          faces: s.faces || 0,
         });
       }
 
@@ -224,6 +251,7 @@ export const RobotProvider = ({ children }) => {
 
       if (camRes.status === 'fulfilled' && camRes.value?.sources?.robot?.streamUrl) {
         setRobotCameraStreamUrl(camRes.value.sources.robot.streamUrl);
+        setRobotCameraStatus('LIVE');
       }
     } catch (err) {
       console.warn('[RobotContext] Initial data sync warning:', err);
@@ -307,47 +335,65 @@ export const RobotProvider = ({ children }) => {
       const nowIso = data.timestamp || new Date().toISOString();
       setLastTelemetryTimestamp(nowIso);
 
-      if (data.batteryVoltage != null || data.batteryPercentage != null) {
+      // Handle battery (both Arduino and schema format)
+      const volt = data.voltage != null ? data.voltage : data.batteryVoltage;
+      const pct = data.battery != null ? data.battery : data.batteryPercentage;
+      const temp = data.temperature != null ? data.temperature : null;
+      const cur = data.leftCurrent != null && data.rightCurrent != null ? data.leftCurrent + data.rightCurrent : data.batteryCurrent;
+
+      if (volt != null || pct != null) {
         setLiveBattery({
-          voltage: data.batteryVoltage,
-          percentage: data.batteryPercentage,
-          current: data.batteryCurrent || data.totalCurrent,
-          temperature: data.temperature,
-          status: data.batteryVoltage < 31 ? 'CRITICAL' : data.batteryVoltage < 33 ? 'WARNING' : 'NORMAL',
+          voltage: volt != null ? Number(volt) : null,
+          percentage: pct != null ? Number(pct) : null,
+          current: cur != null ? Number(cur) : null,
+          temperature: temp != null ? Number(temp) : null,
+          status: volt < 31 ? 'CRITICAL' : volt < 33 ? 'WARNING' : 'NORMAL',
           updatedAt: nowIso,
         });
       }
 
-      if (data.leftMotorCurrent != null || data.rightMotorCurrent != null || data.leftMotorPWM != null) {
+      // Handle differential motors (both Arduino and schema format)
+      const lMotor = data.leftMotor != null ? data.leftMotor : data.leftMotorSpeed;
+      const rMotor = data.rightMotor != null ? data.rightMotor : data.rightMotorSpeed;
+      const lCur = data.leftCurrent != null ? data.leftCurrent : data.leftMotorCurrent;
+      const rCur = data.rightCurrent != null ? data.rightCurrent : data.rightMotorCurrent;
+
+      if (lMotor != null || rMotor != null || lCur != null || rCur != null) {
         setLiveMotors({
           left: {
-            current: data.leftMotorCurrent,
-            pwm: data.leftMotorPWM,
-            speed: data.leftMotorSpeed,
-            status: (data.leftMotorCurrent || 0) > 20 ? 'WARNING' : 'NORMAL',
+            current: lCur != null ? Number(lCur) : 0,
+            pwm: lMotor != null ? Number(lMotor) : 0,
+            speed: lMotor != null ? Number(lMotor) : 0,
+            status: (lCur || 0) > 20 ? 'WARNING' : 'NORMAL',
           },
           right: {
-            current: data.rightMotorCurrent,
-            pwm: data.rightMotorPWM,
-            speed: data.rightMotorSpeed,
-            status: (data.rightMotorCurrent || 0) > 20 ? 'WARNING' : 'NORMAL',
+            current: rCur != null ? Number(rCur) : 0,
+            pwm: rMotor != null ? Number(rMotor) : 0,
+            speed: rMotor != null ? Number(rMotor) : 0,
+            status: (rCur || 0) > 20 ? 'WARNING' : 'NORMAL',
           },
           updatedAt: nowIso,
         });
       }
 
-      if (data.obstacleDistance != null || data.frontDistanceCm != null) {
+      // Handle obstacle ultrasonic
+      const obsCm = data.obstacle != null ? data.obstacle : data.frontDistanceCm;
+      const obsM = obsCm != null ? Number((obsCm / 100).toFixed(2)) : data.obstacleDistance;
+
+      if (obsCm != null || obsM != null) {
         setLiveUltrasonic({
-          frontDistanceCm: data.frontDistanceCm || (data.obstacleDistance != null ? Math.round(data.obstacleDistance * 100) : null),
+          frontDistanceCm: obsCm,
           rearDistanceCm: data.rearDistanceCm || null,
-          frontDistanceM: data.obstacleDistance || (data.frontDistanceCm != null ? Number((data.frontDistanceCm / 100).toFixed(2)) : null),
+          frontDistanceM: obsM,
           rearDistanceM: data.rearDistance || null,
-          status: data.obstacleDistance && data.obstacleDistance < 0.4 ? 'CRITICAL' : 'CLEAR',
+          status: obsCm && obsCm < 30 ? 'CRITICAL' : 'CLEAR',
           updatedAt: nowIso,
         });
       }
 
-      if (data.controlMode) setControlMode(data.controlMode);
+      if (data.mode) setControlMode(data.mode);
+      else if (data.controlMode) setControlMode(data.controlMode);
+
       if (data.emergencyStop !== undefined) setEmergencyStop(Boolean(data.emergencyStop));
 
       setTelemetryHistory((prev) => [...prev.slice(-40), data]);
@@ -365,11 +411,19 @@ export const RobotProvider = ({ children }) => {
       // Dynamically increment counters
       setCounters((prev) => {
         const type = String(det.type).toUpperCase();
+        const vClass = String(det.vehicleClass || '').toUpperCase();
         return {
+          ...prev,
           totalDetections: prev.totalDetections + 1,
           anprPlates: type === 'ANPR' ? prev.anprPlates + 1 : prev.anprPlates,
           ambulanceTriggers: type === 'AMBULANCE' ? prev.ambulanceTriggers + 1 : prev.ambulanceTriggers,
-          vehiclesClassified: type === 'VEHICLE' ? prev.vehiclesClassified + 1 : prev.vehiclesClassified,
+          vehiclesClassified: type === 'VEHICLE' || type === 'AMBULANCE' ? prev.vehiclesClassified + 1 : prev.vehiclesClassified,
+          cars: vClass === 'CAR' ? prev.cars + 1 : prev.cars,
+          motorcycles: vClass === 'MOTORCYCLE' ? prev.motorcycles + 1 : prev.motorcycles,
+          trucks: vClass === 'TRUCK' ? prev.trucks + 1 : prev.trucks,
+          buses: vClass === 'BUS' ? prev.buses + 1 : prev.buses,
+          bicycles: vClass === 'BICYCLE' ? prev.bicycles + 1 : prev.bicycles,
+          faces: type === 'FACE' ? prev.faces + 1 : prev.faces,
         };
       });
 
@@ -394,9 +448,9 @@ export const RobotProvider = ({ children }) => {
           timestamp: det.timestamp || new Date().toISOString(),
           plateNumber: det.plate || det.detectionInfo || 'MH12AB1234',
           state: det.details?.state || 'Maharashtra',
-          vehicleType: det.details?.vehicleType || 'CAR',
+          vehicleType: det.details?.vehicleType || det.vehicleClass || 'CAR',
           confidence: det.confidence || 0.94,
-          imageUrl: det.imageUrl,
+          imageUrl: det.plateImageUrl || det.imageUrl,
           source: det.source || 'CAMERA-01',
         };
         setAnprList((prev) => [plateRecord, ...prev.slice(0, 99)]);
@@ -409,7 +463,24 @@ export const RobotProvider = ({ children }) => {
       }
     };
 
-    // 4. Camera Status
+    // 4. Vehicle Counts Update from Tracker
+    const handleVehicleCount = (stats) => {
+      if (stats) {
+        setCounters((prev) => ({
+          ...prev,
+          totalVehicles: stats.totalVehicles !== undefined ? stats.totalVehicles : prev.totalVehicles,
+          cars: stats.cars !== undefined ? stats.cars : prev.cars,
+          motorcycles: stats.motorcycles !== undefined ? stats.motorcycles : prev.motorcycles,
+          trucks: stats.trucks !== undefined ? stats.trucks : prev.trucks,
+          buses: stats.buses !== undefined ? stats.buses : prev.buses,
+          bicycles: stats.bicycles !== undefined ? stats.bicycles : prev.bicycles,
+          other: stats.other !== undefined ? stats.other : prev.other,
+          vehiclesClassified: stats.totalVehicles !== undefined ? stats.totalVehicles : prev.vehiclesClassified,
+        }));
+      }
+    };
+
+    // 5. Camera Status
     const handleCameraStatus = (status) => {
       if (status && status.status) {
         setRobotCameraStatus(status.status.includes('LIVE') ? 'LIVE' : 'OFFLINE');
@@ -419,7 +490,7 @@ export const RobotProvider = ({ children }) => {
       }
     };
 
-    // 5. Command Acknowledgments
+    // 6. Command Acknowledgments
     const handleCommandAck = (ack) => {
       setLastCommandAck(ack);
       setCommandStatus(ack.status === 'SUCCESS' || ack.status === 'COMMAND_SENT' ? 'SUCCESS' : 'FAILED');
@@ -440,12 +511,21 @@ export const RobotProvider = ({ children }) => {
     socket.on('detection:new', handleDetectionNew);
     socket.on('ai:detection', handleDetectionNew);
     socket.on('robot:detection', handleDetectionNew);
+    socket.on('vehicle:count', handleVehicleCount);
     socket.on('ambulance:detected', (det) => handleDetectionNew({ ...det, type: 'AMBULANCE' }));
     socket.on('anpr:detected', (det) => handleDetectionNew({ ...det, type: 'ANPR' }));
+    socket.on('face:detected', (det) => handleDetectionNew({ ...det, type: 'FACE' }));
     socket.on('vehicle:detected', (det) => handleDetectionNew({ ...det, type: 'VEHICLE' }));
 
     socket.on('command:ack', handleCommandAck);
     socket.on('device:ack', handleCommandAck);
+
+    socket.on('snapshot:created', (snap) => {
+      if (snap) {
+        setLatestSnapshot(snap);
+        setSnapshotsList((prev) => [snap, ...prev.slice(0, 49)]);
+      }
+    });
 
     return () => {
       socket.off('connect', handleConnect);
@@ -459,8 +539,10 @@ export const RobotProvider = ({ children }) => {
       socket.off('detection:new', handleDetectionNew);
       socket.off('ai:detection', handleDetectionNew);
       socket.off('robot:detection', handleDetectionNew);
+      socket.off('vehicle:count', handleVehicleCount);
       socket.off('ambulance:detected');
       socket.off('anpr:detected');
+      socket.off('face:detected');
       socket.off('vehicle:detected');
       socket.off('command:ack', handleCommandAck);
       socket.off('device:ack', handleCommandAck);
@@ -557,9 +639,17 @@ export const RobotProvider = ({ children }) => {
       setAnprList([]);
       setCounters({
         totalDetections: 0,
+        totalVehicles: 0,
+        cars: 0,
+        motorcycles: 0,
+        trucks: 0,
+        buses: 0,
+        bicycles: 0,
+        other: 0,
         anprPlates: 0,
         ambulanceTriggers: 0,
         vehiclesClassified: 0,
+        faces: 0,
       });
     } catch (err) {
       console.error('Failed to clear detections log:', err);
@@ -579,8 +669,17 @@ export const RobotProvider = ({ children }) => {
         setIsDemoMode,
         dataSource: isDemoMode ? 'DEMO MODE' : isLiveDevice && robotStatus === 'ONLINE' ? 'LIVE ROBOT' : 'OFFLINE / NO DATA',
         robotStatus,
+        setRobotStatus,
+        arduinoStatus,
+        setArduinoStatus,
+        rcStatus,
+        setRcStatus,
         controlMode,
+        setControlMode,
+        speedLimiter,
+        setSpeedLimiter,
         emergencyStop,
+        setEmergencyStop,
         safetyMessage,
         commandStatus,
         lastCommandAck,
@@ -603,6 +702,14 @@ export const RobotProvider = ({ children }) => {
         anprPlates: counters.anprPlates,
         ambulanceTriggers: counters.ambulanceTriggers,
         vehiclesClassified: counters.vehiclesClassified,
+        totalVehicles: counters.totalVehicles,
+        cars: counters.cars,
+        motorcycles: counters.motorcycles,
+        trucks: counters.trucks,
+        buses: counters.buses,
+        bicycles: counters.bicycles,
+        other: counters.other,
+        faces: counters.faces,
 
         // Camera & Perception
         robotCameraStreamUrl,
@@ -613,6 +720,9 @@ export const RobotProvider = ({ children }) => {
         liveDetections,
         liveEvents,
         anprList,
+        snapshotsList,
+        latestSnapshot,
+        setSnapshotsList,
         trafficMetrics,
         crosswalkRisk,
         setCrosswalkRisk,

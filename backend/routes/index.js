@@ -7,10 +7,14 @@ import { historyRouter } from './history.js';
 import { cameraRouter } from './camera.js';
 import { aiRouter } from './ai.js';
 import { robotRouter } from './robotRoutes.js';
+import { facesRouter } from './faces.js';
+import { snapshotsRouter } from './snapshots.js';
 import { createDeviceRouter } from './deviceRoutes.js';
 import { s3Service } from '../services/s3Service.js';
 import { db } from '../config/db.js';
 import { deviceService } from '../services/deviceService.js';
+import { detectionService } from '../services/detectionService.js';
+import { cameraSnapshotService } from '../services/cameraSnapshotService.js';
 
 export function createApiRouter() {
   const router = express.Router();
@@ -20,9 +24,11 @@ export function createApiRouter() {
   router.use('/images', imageRouter);
   router.use('/storage', storageRouter);
   router.use('/camera', cameraRouter);
+  router.use('/snapshots', snapshotsRouter);
   router.use('/detections', detectionRouter);
   router.use('/ai', aiRouter);
   router.use('/robot', robotRouter);
+  router.use('/faces', facesRouter);
   router.use('/device', createDeviceRouter());
   router.use('/devices', createDeviceRouter());
   router.use(historyRouter);
@@ -64,7 +70,7 @@ export function createApiRouter() {
   });
 
   // ----------------------------------------------------
-  // HEALTH CHECKS
+  // HEALTH & DIAGNOSTICS ENDPOINTS (Phase 38)
   // ----------------------------------------------------
   router.get('/health', async (req, res) => {
     const dbStatus = db.getStatus();
@@ -97,11 +103,90 @@ export function createApiRouter() {
   });
 
   // ----------------------------------------------------
-  // S3 DEV TEST ENDPOINT (For diagnostics)
+  // CAMERA SNAPSHOT ENDPOINTS (Section 6, 28, 29)
+  // ----------------------------------------------------
+  router.post('/robot/camera/snapshot', async (req, res) => {
+    try {
+      const { robotId, image, source } = req.body || {};
+      const io = req.app.get('io');
+      const result = await cameraSnapshotService.captureSnapshot({
+        robotId: robotId || process.env.DEFAULT_ROBOT_ID || 'PRAHARI-01',
+        providedImageBase64: image || null,
+        source: source || 'MAST_CAMERA',
+        io,
+      });
+
+      let signedUrl = result.imageUrl;
+      if (result.s3Key && result.imageUploadStatus === 'UPLOADED') {
+        try {
+          signedUrl = await s3Service.getDetectionImageUrl(result.s3Key);
+        } catch {}
+      }
+
+      res.json({
+        success: true,
+        snapshotId: result.snapshotId,
+        robotId: result.robotId,
+        s3Key: result.s3Key,
+        imageUrl: result.imageUrl,
+        signedUrl: signedUrl || result.imageUrl,
+        imageUploadStatus: result.imageUploadStatus,
+        width: result.width,
+        height: result.height,
+        fileSize: result.fileSize,
+        timestamp: result.createdAt || new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error('[SNAPSHOT ROUTE ERROR]', err.message);
+      res.status(500).json({ success: false, error: err.message || 'SNAPSHOT_CAPTURE_FAILED' });
+    }
+  });
+
+  router.get('/robot/camera/snapshot', async (req, res) => {
+    try {
+      const robotId = req.query.robotId || 'PRAHARI-01';
+      const frameBuf = await cameraSnapshotService.getLatestFrameBuffer(robotId);
+      res.setHeader('Content-Type', 'image/jpeg');
+      res.setHeader('Content-Length', frameBuf.length);
+      res.setHeader('Cache-Control', 'no-cache, private');
+      res.end(frameBuf);
+    } catch (err) {
+      res.status(500).send(`Camera frame capture error: ${err.message}`);
+    }
+  });
+
+  router.get('/camera/snapshot-status', (_req, res) => {
+    res.json(cameraSnapshotService.getStatus());
+  });
+
+  router.post('/dev/test-camera-snapshot', async (req, res) => {
+    try {
+      const io = req.app.get('io');
+      const result = await cameraSnapshotService.captureSnapshot({
+        robotId: 'PRAHARI-DEV-TEST',
+        io,
+      });
+
+      res.json({
+        success: true,
+        snapshotId: result.snapshotId,
+        width: result.width,
+        height: result.height,
+        fileSize: result.fileSize,
+        s3Key: result.s3Key,
+        imageUploadStatus: result.imageUploadStatus,
+        timestamp: result.createdAt,
+      });
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // ----------------------------------------------------
+  // S3 DEV TEST ENDPOINT (Phase 46)
   // ----------------------------------------------------
   router.post('/dev/test-s3', async (req, res) => {
     try {
-      // 1x1 transparent JPEG pixel buffer
       const testBuffer = Buffer.from(
         '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=',
         'base64'

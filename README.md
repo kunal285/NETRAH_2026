@@ -1,977 +1,140 @@
-# 🚦 PRAHARI Traffic Police Robot Command Center
+# PRAHARI V3 — Real-Time Robot Command Center
 
-**PRAHARI** is a traffic-operations command center designed to monitor and control a police robot.
+[![PRAHARI V3 Architecture](https://img.shields.io/badge/PRAHARI-Arduino%20Nano%20%2B%20ESP32--CAM%20%2B%20BTS7960-emerald.svg)](https://github.com/kunal285/NETRAH_2026)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-It provides a web-based operator dashboard with:
-
-* 🤖 Robot monitoring and control
-* 📡 Real-time telemetry
-* 📷 Camera and sensor views
-* 🚗 Vehicle detection
-* 🔢 Number-plate detection (ANPR)
-* 🚨 Traffic and safety alerts
-* 🧠 AI-assisted events
-* 🔐 Authentication
-* 💾 Optional MongoDB persistence
-* ⚡ Real-time communication using Socket.IO
+An end-to-end real-time robot teleoperation command center and edge AI system for the **PRAHARI Traffic Police Robot (MK3)**.
 
 ---
 
-# 1. System Architecture
+## 1. Hardware Architecture (CURRENT)
 
-PRAHARI consists of four application components:
-
-```text
-                         PRAHARI
-                            │
-              ┌─────────────┼─────────────┐
-              │             │             │
-              ▼             ▼             ▼
-        ┌──────────┐  ┌──────────┐  ┌──────────┐
-        │ Frontend │  │ Backend  │  │AI Service│
-        │ Next.js  │  │ Express  │  │ FastAPI  │
-        │          │  │ Socket.IO│  │ Python   │
-        │ Port 3000│  │Port 4000 │  │Port 8000 │
-        └────┬─────┘  └────┬─────┘  └────┬─────┘
-             │             │             │
-             └─────────────┼─────────────┘
-                           │
-                      ┌────▼─────┐
-                      │ MongoDB  │
-                      │ Optional │
-                      └──────────┘
 ```
-
-### Frontend
-
-The `frontend/` directory contains the **Next.js operator dashboard**.
-
-It provides the user interface for:
-
-* Robot controls
-* Telemetry
-* Camera feeds
-* Sensors
-* Alerts
-* AI events
-
-### Backend
-
-The `backend/` directory contains the **Express and Socket.IO server**.
-
-It handles:
-
-* REST APIs
-* Authentication & JWT sessions
-* Real-time communication (Socket.IO)
-* Robot teleoperation & safety interlocks
-* Telemetry & sensor processing
-* Emergency ambulance green-corridor management
-* Database persistence & S3 image storage
-* Integrated AI Multi-Modal Perception Engine (`services/ai/`)
-* Integrated Raspberry Pi 5 Hardware/Simulation Adapter (`services/rpi5/`)
-
----
-
-# 2. Project Structure
-
-```text
-PRAHARI/
-│
-├── frontend/
-│   ├── Next.js dashboard
-│   ├── Tailwind CSS + Lucide Icons
-│   └── Operator controls & Vision suites
-│
-├── backend/
-│   ├── Express API & Socket.IO server
-│   ├── services/ai/ (Multi-modal vision, ANPR, YOLO, Siren FFT)
-│   ├── services/rpi5/ (Hardware / Simulation bridge)
-│   ├── Authentication & Middleware
-│   ├── Database & S3 Storage
-│   └── Simulator & Safety services
-│
-└── package.json
-```
-
----
-
-# 3. Prerequisites
-
-Install the following before starting the project.
-
-### Required
-
-* **Node.js 18 or newer**
-* **npm**
-
-### Optional
-
-* **Python 3.10 or newer** — required for AI features
-* **MongoDB** — required for persistent database storage
-
-> MongoDB is optional. PRAHARI can run in demo mode without MongoDB.
-
----
-
-# 4. Installation
-
-Open **PowerShell** in the project root directory.
-
-Install the root dependencies:
-
-```powershell
-npm install
-```
-
-Install frontend dependencies:
-
-```powershell
-npm install --prefix frontend
-```
-
-Install backend dependencies:
-
-```powershell
-npm install --prefix backend
-```
-
----
-
-# 5. Environment Configuration
-
-Create the frontend environment file:
-
-```powershell
-Copy-Item frontend/.env.example frontend/.env.local
-```
-
-Create the backend environment file:
-
-```powershell
-Copy-Item backend/.env.example backend/.env
-```
-
----
-
-## Backend Environment Variables
-
-Open:
-
-```text
-backend/.env
-```
-
-Configure the required values.
-
-```env
-JWT_SECRET=<your-long-random-secret>
-MONGODB_URI=<your-mongodb-connection-string>
-GEMINI_API_KEY=<your-gemini-api-key>
-AI_SERVICE_URL=http://localhost:8000
-```
-
-### What these variables do
-
-| Variable         | Purpose                      |
-| ---------------- | ---------------------------- |
-| `JWT_SECRET`     | Authentication/security      |
-| `MONGODB_URI`    | MongoDB database connection  |
-| `GEMINI_API_KEY` | Gemini-powered features      |
-| `AI_SERVICE_URL` | URL of the Python AI service |
-
-Only configure the variables required by the features you are using.
-
----
-
-# 6. Run PRAHARI Locally
-
-PRAHARI uses three software services locally; the optional `rpi5-bridge/` runs
-separately on the physical Raspberry Pi 5 robot.
-
-For local development, open **three PowerShell terminals**. When testing with a
-physical robot, run the RPi5 bridge on the robot instead of another Windows
-terminal.
-
-Start them in this order:
-
-```text
-1. Backend
-2. AI Service
-3. Frontend
-```
-
----
-
-## Terminal 1 — Backend
-
-From the project root:
-
-```powershell
-npm run dev:backend
-```
-
-The backend normally runs on:
-
-```text
-http://localhost:4000
-```
-
-Keep this terminal running.
-
----
-
-## Terminal 2 — AI Service
-
-The AI service is separate from Node.js.
-
-Go to the AI service directory:
-
-```powershell
-cd ai-service
-```
-
-Create a Python virtual environment:
-
-```powershell
-python -m venv .venv
-```
-
-Activate it:
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-```
-
-Install Python dependencies:
-
-```powershell
-pip install -r requirements.txt
-```
-
-Start the AI service:
-
-```powershell
-python main.py
-```
-
-The AI service normally runs on:
-
-```text
-http://localhost:8000
-```
-
-### Important
-
-The Python code does **not** run inside Node.js.
-
-`main.py` starts a FastAPI application using Uvicorn.
-
-Keep this terminal running while using AI features.
-
----
-
-# 7. Change the AI Service Port
-
-If port `8000` is already being used, choose another port.
-
-For example:
-
-```powershell
-$env:AI_SERVICE_PORT = "8001"
-python main.py
-```
-
-Then update the backend `.env` file:
-
-```env
-AI_SERVICE_URL=http://localhost:8001
-```
-
----
-
-# 8. AI Service API
-
-The AI service provides the following endpoints.
-
-### Health Check
-
-```text
-GET /health
-```
-
-Used to verify that the AI service is running.
-
-### Available Models
-
-```text
-GET /models
-```
-
-Returns the available AI models.
-
-### Detection APIs
-
-```text
-POST /detect/frame
-POST /detect/anpr
-POST /detect/ambulance
-POST /detect/pedestrians
-POST /detect/gesture
-POST /detect/audio
-```
-
-These endpoints perform the corresponding AI detection tasks.
-
----
-
-# 9. Terminal 3 — Frontend
-
-From the project root:
-
-```powershell
-npm run dev:frontend
-```
-
-The Next.js dashboard normally runs at:
-
-```text
-http://localhost:3000
-```
-
-Open this address in your browser.
-
-```text
-http://localhost:3000
-```
-
----
-
-# 10. Local Service URLs
-
-| Service    | Default Port | URL                     |
-| ---------- | -----------: | ----------------------- |
-| Frontend   |       `3000` | `http://localhost:3000` |
-| Backend    |       `4000` | `http://localhost:4000` |
-| AI Service |       `8000` | `http://localhost:8000` |
-
----
-
-# 11. How Communication Works
-
-The frontend communicates with the backend using APIs and Socket.IO.
-
-The backend communicates with:
-
-* The robot
-* MongoDB
-* The AI service
-
-```text
-Operator
-   │
-   ▼
-Next.js Dashboard
-   │
-   │ API / Socket.IO
-   ▼
-Express + Socket.IO Backend
-   │
-   ├──────────────► Robot
-   │
-   ├──────────────► MongoDB
-   │
-   └──────────────► Python AI Service
+                    PRAHARI COMMAND CENTER (Website)
+                                   │
+                                   │ WebSocket
+                                   ▼
+                             NODE.JS BACKEND
+                                   │
+                                   │ USB / Serial (115200 Baud)
+                                   ▼
+                             ARDUINO NANO
+                                   │
+                     ┌─────────────┴─────────────┐
+                     ▼                           ▼
+               BTS7960 DRIVER              BTS7960 DRIVER
+                     │                           │
+                     ▼                           ▼
+              LEFT REAR MOTOR             RIGHT REAR MOTOR
+
+                            FRONT CASTER WHEEL
+                          (360° Passive Mechanical)
+
+
+CAMERA STREAM:
+                  ESP32-CAM (Wi-Fi MJPEG :80 / :8080)
                          │
                          ▼
-                    AI Detection
+                WEBSITE & AI PERCEPTION
+
+
+PHYSICAL RC REMOTE:
+               RC TRANSMITTER ────▶ RC RECEIVER ────▶ ARDUINO NANO
+                                                       (Interrupts D2/D3)
 ```
 
-The frontend proxies:
-
-```text
-/api
-/socket.io
-```
-
-to the backend.
+- **Microcontroller**: Arduino Nano (ATmega328P, 16 MHz, 5V)
+- **Camera Sensor**: ESP32-CAM (OV2640, Wi-Fi MJPEG Video Streamer)
+- **Motor Drivers**: 2 × BTS7960 43A High-Power H-Bridge Drivers
+- **Motors**: 2 × DC Geared Drive Motors (Rear Left, Rear Right)
+- **Front Wheels**: Heavy-Duty 360° Passive Caster Wheels (**NO front steering servo, NO front motor**)
+- **Physical RC**: 2-4 Channel RC Receiver connected to Arduino Nano interrupt pins (Hardware Priority 2)
+- **Safety System**: 400ms Arduino command timeout (Auto-Stop on connection loss), Ultrasonic distance sensor (HC-SR04), Hardware Emergency Stop
 
 ---
 
-# 12. Production Deployment
+## 2. Differential Drive Movement Mathematics
 
-For production, PRAHARI uses three hosted services plus the hardware bridge.
+The website utilizes a single continuous game-style differential joystick:
+- **Y-Axis**: Throttle ($-1.0$ to $+1.0$)
+- **X-Axis**: Steering ($-1.0$ to $+1.0$)
 
-| Service    | Recommended Hosting             |
-| ---------- | ------------------------------- |
-| Frontend   | Vercel or another Node.js host  |
-| Backend    | Render, Railway, Fly.io, or VPS |
-| AI Service | Python host or GPU-enabled VPS  |
-| Database   | MongoDB Atlas                   |
-| RPi5 Bridge | Raspberry Pi 5 on the robot    |
+$$\text{leftMotor} = \text{clamp}(\text{throttle} + \text{steering}, -1.0, 1.0) \times \text{speedLimit}$$
+$$\text{rightMotor} = \text{clamp}(\text{throttle} - \text{steering}, -1.0, 1.0) \times \text{speedLimit}$$
 
-For production database storage, **MongoDB Atlas** is recommended.
-
----
-
-# 13. Deploy MongoDB
-
-Create a MongoDB Atlas cluster.
-
-After creating the cluster:
-
-1. Create a database user.
-2. Configure network access.
-3. Add the IP address of your backend host.
-4. Copy the MongoDB connection string.
-
-Example:
-
-```text
-mongodb+srv://username:password@cluster.mongodb.net/prahari
-```
-
-Keep this connection string private.
+| Motion | Throttle | Steering | Left Motor Output | Right Motor Output |
+| :--- | :---: | :---: | :---: | :---: |
+| **Forward** | $+1.0$ | $0.0$ | $+100\%$ | $+100\%$ |
+| **Reverse** | $-1.0$ | $0.0$ | $-100\%$ | $-100\%$ |
+| **Turn Left** | $+0.7$ | $-0.3$ | $+40\%$ | $+100\%$ |
+| **Turn Right** | $+0.7$ | $+0.3$ | $+100\%$ | $+40\%$ |
+| **Spin Left** | $0.0$ | $-1.0$ | $-100\%$ | $+100\%$ |
+| **Spin Right** | $0.0$ | $+1.0$ | $+100\%$ | $-100\%$ |
+| **Stop** | $0.0$ | $0.0$ | $0\%$ | $0\%$ |
 
 ---
 
-# 14. Deploy the Backend
-
-Create a Node.js web service using:
-
-```text
-Root Directory:
-backend/
-```
-
-Use:
-
-```text
-Build Command:
-npm install
-```
-
-and:
-
-```text
-Start Command:
-npm start
-```
-
-Configure these environment variables:
-
-```env
-NODE_ENV=production
-
-BACKEND_PORT=10000
-
-MONGODB_URI=<your-mongodb-atlas-connection-string>
-
-JWT_SECRET=<a-long-random-secret>
-
-AI_SERVICE_URL=https://<your-ai-service-host>
-
-APP_URL=https://<your-frontend-host>
-```
-
-### Important
-
-Set `BACKEND_PORT` according to the port required by your hosting provider.
-
-After deployment, test the backend health endpoint:
-
-```text
-https://<your-backend-host>/api/health
-```
-
-It should return a successful health response.
-
----
-
-# 15. Deploy the AI Service
-
-Create a Python web service using:
-
-```text
-Root Directory:
-ai-service/
-```
-
-Use:
-
-```text
-Build Command:
-pip install -r requirements.txt
-```
-
-Start the service with:
-
-```text
-uvicorn main:app --host 0.0.0.0 --port $PORT
-```
-
-After deployment, test:
-
-```text
-https://<your-ai-service-host>/health
-```
-
-If the health endpoint works, update the backend environment:
-
-```env
-AI_SERVICE_URL=https://<your-ai-service-host>
-```
-
-### Is the AI service required?
-
-No.
-
-The AI service is **optional** if you are running PRAHARI without AI detection features.
-
-If the AI models require significant CPU, RAM, or GPU resources, use an appropriate GPU-enabled hosting environment.
-
----
-
-# 16. Deploy the Frontend
-
-Deploy the `frontend/` directory as a Next.js application.
-
-For Vercel, the standard Next.js build settings can be used.
-
-### Build Command
-
-```text
-npm run build
-```
-
-Configure:
-
-```env
-NEXT_PUBLIC_API_URL=https://<your-backend-host>
-
-NEXT_PUBLIC_SOCKET_URL=https://<your-backend-host>
-```
-
-After deployment, copy the final frontend URL.
-
-For example:
-
-```text
-https://prahari.example.com
-```
-
-Then update the backend:
-
-```env
-APP_URL=https://prahari.example.com
-```
-
----
-
-# 17. Deploy the RPi5 Bridge
-
-Install the bridge on the Raspberry Pi 5 connected to the robot hardware:
-
-```bash
-cd rpi5-bridge
-python3 -m venv .venv
-. .venv/bin/activate
-pip install -r requirements.txt
-```
-
-Set `BACKEND_HTTP_URL`, `BACKEND_SOCKET_URL`, and `ROBOT_ID` in
-`rpi5_bridge.py`, and check the wiring against
-[`rpi5-bridge/PINOUT_GUIDE.md`](rpi5-bridge/PINOUT_GUIDE.md).
-
-For automatic startup, update the paths and user in
-`rpi5-bridge/prahari-rpi5.service`, then run:
-
-```bash
-sudo cp prahari-rpi5.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now prahari-rpi5.service
-sudo systemctl status prahari-rpi5.service
-```
-
-View logs with:
-
-```bash
-sudo journalctl -u prahari-rpi5.service -f
-```
-
-Do not expose the Raspberry Pi directly to the public internet. It should make
-outbound connections to the secured backend.
-
----
-
-# 18. Production Connection
-
-Your final production architecture should look like this:
-
-```text
-                     INTERNET
-                         │
-                         ▼
-              ┌──────────────────┐
-              │ PRAHARI Frontend │
-              │     Next.js      │
-              └────────┬─────────┘
-                       │
-                 HTTPS / WebSocket
-                       │
-                       ▼
-              ┌──────────────────┐
-              │ PRAHARI Backend  │
-              │ Express + Socket │
-              └───────┬───┬──────┘
-                      │   │
-             ┌────────┘   └─────────┐
-             ▼                      ▼
-      ┌─────────────┐       ┌─────────────┐
-      │ MongoDB      │       │ AI Service  │
-      │ Atlas        │       │ FastAPI     │
-      └─────────────┘       └─────────────┘
-                                     ▲
-                                     │ HTTPS / Socket.IO
-                             ┌───────┴───────┐
-                             │ Raspberry Pi 5│
-                             │ RPi5 Bridge   │
-                             └───────────────┘
-```
-
----
-
-# 19. Production Requirements
-
-Make sure:
-
-* Frontend uses HTTPS.
-* Backend uses HTTPS.
-* Socket.IO/WebSocket connections are supported.
-* Backend CORS is restricted to the frontend domain.
-* MongoDB Atlas allows connections from the backend host.
-* AI service is reachable by the backend.
-* Required environment variables are configured.
-* `.env` files are never committed to Git.
-
----
-
-# 20. Physical Robot Configuration
-
-If PRAHARI is connected to a physical robot, configure:
-
-```env
-ROBOT_API_URL=<robot-api-url>
-
-ROBOT_CAMERA_STREAM_URL=<robot-camera-stream-url>
-```
-
-These variables allow the backend/dashboard to communicate with the physical robot and access its camera stream.
-
----
-
-# 21. Production Security Checklist
-
-Before going live, verify the following:
-
-* [ ] Use a strong and unique `JWT_SECRET`.
-* [ ] Never commit `.env` files.
-* [ ] Never expose API keys publicly.
-* [ ] Restrict backend CORS to the frontend domain.
-* [ ] Configure `ROBOT_API_URL` when using a physical robot.
-* [ ] Configure `ROBOT_CAMERA_STREAM_URL` when using a robot camera.
-* [ ] Verify the backend `/api/health` endpoint.
-* [ ] Verify the AI `/health` endpoint.
-* [ ] Verify Socket.IO/WebSocket connectivity.
-* [ ] Confirm MongoDB Atlas network access.
-* [ ] Use sufficient CPU/RAM for AI inference.
-* [ ] Use a GPU-enabled host if required by the AI models.
-
----
-
-# 22. Troubleshooting
-
-## Port 3000 Is Already in Use
-
-If port `3000` is already occupied, start the frontend on another port:
-
-```powershell
-npm run dev --prefix frontend -- -p 3001
-```
-
-Then open:
-
-```text
-http://localhost:3001
-```
-
-Alternatively, stop the process currently using port `3000`.
-
----
-
-## Next.js Cannot Find a Chunk
-
-If you see an error such as:
-
-```text
-Cannot find a chunk such as ./818.js
-```
-
-the `.next` directory may contain stale or mixed build files.
-
-### Fix
-
-Stop the frontend process.
-
-Delete the generated Next.js directory:
-
-```powershell
-Remove-Item -Recurse -Force frontend/.next
-```
-
-Restart the frontend:
-
-```powershell
-npm run dev:frontend
-```
-
-Next.js will automatically create a new `.next` directory.
-
-> `.next/` is generated automatically and should not be committed to Git.
-
----
-
-# 23. Production Frontend Build
-
-To create a production build:
-
-```powershell
-npm run build
-```
-
-Start the production frontend:
-
-```powershell
-npm run start
-```
-
----
-
-# 24. Quick Start
-
-For local development, use three terminals.
-
-### Terminal 1 — Backend
-
-```powershell
-npm run dev:backend
-```
-
-### Terminal 2 — AI Service
-
-```powershell
-cd ai-service
-.\.venv\Scripts\Activate.ps1
-python main.py
-```
-
-### Terminal 3 — Frontend
-
-```powershell
-npm run dev:frontend
-```
-
-Then open:
-
-```text
-http://localhost:3000
-```
-
----
-
-# 25. Useful Commands
-
-| Command                           | Description                           |
-| --------------------------------- | ------------------------------------- |
-| `npm install`                     | Install root dependencies             |
-| `npm install --prefix frontend`   | Install frontend dependencies         |
-| `npm install --prefix backend`    | Install backend dependencies          |
-| `npm run dev:frontend`            | Start the Next.js dashboard           |
-| `npm run dev:backend`             | Start the backend in development mode |
-| `npm run build`                   | Create a production frontend build    |
-| `npm run start`                   | Start the production frontend         |
-| `python main.py`                  | Start the AI service                  |
-| `pip install -r requirements.txt` | Install Python dependencies           |
-
----
-
-# 26. Summary
-
-PRAHARI is made up of three independent services:
-
-### 🖥️ Frontend
-
-**Next.js**
-
-Responsible for the operator dashboard and controls.
-
-### ⚙️ Backend
-
-**Express + Socket.IO**
-
-Responsible for APIs, authentication, robot communication, real-time data, alerts, and database operations.
-
-### 🧠 AI Service
-
-**Python + FastAPI + Uvicorn**
-
-Responsible for AI-based detection and inference.
-
-For local development, run all three services separately.
-
-For production, deploy them independently and connect them using environment variables.
-
-```text
-Frontend
-   ↓
-Backend
-   ↓
- ┌──────────────┬──────────────┐
- ▼              ▼              ▼
-Robot        MongoDB       AI Service
-```
-
-Once all required services are running and correctly configured, PRAHARI is ready for development, testing, and production deployment.
-
----
-
-# 27. HOW TO CONNECT PRAHARI ROBOT (Hardware Integration Guide)
-
-This guide explains how to connect the physical **Raspberry Pi 4 / 5 Robot**, **Robot Camera Stream**, **AI Perception Service**, and **Command Center Dashboard**.
-
-### Network & URL Architecture
-
-```text
-Raspberry Pi 4 Robot (Camera + Motors)
-  ├─ MJPEG Live Video Server:  http://<ROBOT_IP>:8080/video
-  └─ WebSocket Telemetry Out:  http://<BACKEND_IP>:4000
-             │
-             ▼
-Backend Command Center (Node.js / Express / Socket.IO)
-  ├─ REST API:                 http://<BACKEND_IP>:4000/api
-  ├─ Socket.IO Engine:         http://<BACKEND_IP>:4000
-  └─ AWS S3 Image Ingestion:   ap-south-1
-             │
-             ▼
-AI Perception Service (FastAPI / YOLO / ANPR)
-  ├─ AI API:                   http://<AI_IP>:8000
-  └─ Frame Ingestion:          http://<ROBOT_IP>:8080/video
-             │
-             ▼
-Next.js Operator Dashboard
-  └─ Browser / Phone View:     http://<DASHBOARD_IP>:3000
-```
-
----
-
-### Step 1: Configure Environment Variables
-
-#### Robot (`rpi4-onboard/config.py` or `.env`):
-```bash
-ROBOT_ID=PRAHARI-01
-BACKEND_HOST=192.168.1.50   # IP address of machine running Backend
-BACKEND_PORT=4000
-CAMERA_STREAM_PORT=8080
-```
-
-#### AI Service (`ai-service/.env`):
-```bash
-PORT=8000
-BACKEND_URL=http://192.168.1.50:4000
-ROBOT_CAMERA_STREAM_URL=http://192.168.1.100:8080/video  # Robot IP
-ROBOT_ID=PRAHARI-01
-INFERENCE_INTERVAL_SEC=1.0
-```
-
-#### Backend (`backend/.env`):
-```bash
-PORT=4000
-DEFAULT_ROBOT_ID=PRAHARI-01
-ROBOT_CAMERA_STREAM_URL=http://192.168.1.100:8080/video
-AI_SERVICE_URL=http://127.0.0.1:8000
-AWS_ACCESS_KEY_ID=your_access_key
-AWS_SECRET_ACCESS_KEY=your_secret_key
-AWS_REGION=ap-south-1
-AWS_S3_BUCKET_NAME=prahari-image-storage-2026
-```
-
-#### Frontend (`frontend/.env.local`):
-```bash
-NEXT_PUBLIC_API_URL=http://192.168.1.50:4000
-NEXT_PUBLIC_SOCKET_URL=http://192.168.1.50:4000
-NEXT_PUBLIC_ROBOT_CAMERA_STREAM_URL=http://192.168.1.100:8080/video
-NEXT_PUBLIC_AI_SERVICE_URL=http://192.168.1.50:8000
-NEXT_PUBLIC_DEMO_MODE=false
-```
-
----
-
-### Step 2: Start All Services
-
-#### 1. On Raspberry Pi 4 Robot:
-```bash
-cd rpi4-onboard
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python3 main.py
-```
-*Verification:*
-Open `http://<ROBOT_IP>:8080/video` in any browser on the local network. You should see the live MJPEG camera stream immediately.
-
-#### 2. On Backend Server:
+## 3. Quick Start & Setup Guide
+
+### A. Arduino Nano Firmware Flashing
+1. Open [`firmware/arduino_nano/prahari_nano_driver.ino`](file:///d:/others/prahari-traffic-police-robot-command-center/firmware/arduino_nano/prahari_nano_driver.ino) in Arduino IDE.
+2. Select Board: **Arduino Nano**, Processor: **ATmega328P (Old Bootloader or standard)**.
+3. Upload to Arduino Nano over USB.
+
+### B. ESP32-CAM Firmware Flashing
+1. Open [`firmware/esp32_cam/prahari_esp32_cam.ino`](file:///d:/others/prahari-traffic-police-robot-command-center/firmware/esp32_cam/prahari_esp32_cam.ino) in Arduino IDE.
+2. Select Board: **AI Thinker ESP32-CAM**, configure Wi-Fi SSID & Password.
+3. Upload and note the assigned IP address (e.g. `http://192.168.4.1/video`).
+
+### C. Backend Setup (`backend/`)
 ```bash
 cd backend
 npm install
 npm start
 ```
-*Verification:*
-Open `http://<BACKEND_IP>:4000/health`. Should return `{"status": "healthy", "robot": "online", "s3": "ok"}`.
+*Runs on `http://localhost:4000`. Auto-connects to Arduino Nano on USB Serial (`COM3` or `/dev/ttyUSB0`) or runs in responsive simulation mode.*
 
-#### 3. On AI Perception Service:
+### D. AI Perception Microservice (`ai-service/`)
 ```bash
 cd ai-service
-python3 -m venv .venv
-source .venv/bin/activate
 pip install -r requirements.txt
-python3 main.py
+python main.py
 ```
-*Verification:*
-Open `http://<AI_IP>:8000/health`. Should return `{"status": "healthy", "ai": "online", "model": "YOLOv8"}`.
+*Runs on `http://localhost:8000` for YOLOv8 multi-class tracking, ANPR OCR, and Face AI.*
 
-#### 4. On Frontend:
+### E. Next.js / React Command Center Frontend (`frontend/`)
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-*Verification:*
-Open `http://<YOUR_PHONE_IP_OR_LOCALHOST>:3000`.
+*Access command console at `http://localhost:3000`.*
 
 ---
 
-### Step 3: Verify Live Pipeline & Hardware Controls
+## 4. Control Modes & Priority Arbitration
 
-1. **Robot Status**:
-   - The top header will automatically display `● ONLINE` as soon as the robot daemon starts sending heartbeats.
-   - If the robot disconnects or powers off, the watchdog timer marks the status as `OFFLINE` after 4.5 seconds.
-2. **Camera Stream**:
-   - Navigate to the **Camera** or **Dashboard** tab.
-   - The live mast video feed from the Raspberry Pi camera will appear with `● LIVE` and `30 FPS`.
-3. **AI Detections**:
-   - Point the camera at a vehicle or license plate.
-   - AI detects the object -> creates snapshot -> uploads image to AWS S3 -> backend emits `detection:new` -> dashboard counters and live detection feed update instantly without page refresh.
-4. **Robot Teleoperation**:
-   - Go to **Control** or use the **Dashboard Joystick**.
-   - Use `W/A/S/D` or touch joystick to send differential drive motor speeds.
-   - Press `Space` or `🛑 E-STOP` for immediate safety brake.
+1. **Priority 1 — Hardware / Web Emergency Stop**: Immediate hard cutoff of all motor PWM outputs.
+2. **Priority 2 — Physical RC Transmitter**: When RC sticks are moved, Arduino Nano grants RC full driving priority and displays `🎮 RC CONTROL ACTIVE` on the web interface.
+3. **Priority 3 — Web Manual Control**: Virtual Game-Style Joystick, W/A/S/D Keyboard controls, or Gamepad API.
+4. **Priority 4 — Autonomous Mode**: High-level waypoint and AI navigation.
+
+---
+
+## 5. Desktop Keyboard & Gamepad Shortcuts
+
+- `W` / `Up Arrow` : Forward
+- `S` / `Down Arrow` : Reverse
+- `A` / `Left Arrow` : Steer Left
+- `D` / `Right Arrow` : Steer Right
+- `Spacebar` : Instant Stop
+- `E` : Emergency Stop (Hard Kill Switch)
+- **Gamepad API**: Left analog stick controls Throttle & Steering with real-time deadzone compensation.
+
+---
+
+## 6. Telemetry & Failsafe Guarantees
+
+- **Event-Driven Telemetry (10-20 Hz)**: Battery %, Voltage (36V), Left/Right Motor %, Left/Right Currents (A), Obstacle Distance (cm), Temperature (°C).
+- **Zero Full-Page Refresh**: All indicators update via persistent WebSocket with auto-reconnect backoff (1s, 2s, 4s, 8s, 10s max).
+- **Arduino Failsafe Timeout (400ms)**: If communication breaks between Backend and Arduino Nano, motors stop automatically within 400 milliseconds.

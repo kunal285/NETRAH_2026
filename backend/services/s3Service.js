@@ -5,7 +5,6 @@ import {
   DeleteObjectCommand,
   DeleteObjectsCommand,
   HeadBucketCommand,
-  HeadObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import dotenv from 'dotenv';
@@ -14,9 +13,9 @@ dotenv.config();
 
 /**
  * S3Service
- * Handles reliable, secure image storage in AWS S3 for PRAHARI AI detections.
- * Enforces predictable key structure:
- * prahari/detections/YYYY/MM/DD/<robotId>/<detectionId>.jpg
+ * Handles reliable, secure image storage in AWS S3 for PRAHARI V3 AI detections.
+ * Enforces key hierarchy:
+ * prahari/detections/YYYY/MM/DD/<robotId>/<detectionId>/full.jpg (or plate.jpg, face.jpg)
  */
 class S3Service {
   constructor() {
@@ -58,45 +57,130 @@ class S3Service {
       try {
         this.client = new S3Client(config);
         this.initialized = true;
-        console.log(`[S3] Initialized client for bucket: ${this.bucketName} (Region: ${this.region})`);
+        console.log(`[S3] Initialized AWS S3 client for bucket: ${this.bucketName} (Region: ${this.region})`);
       } catch (err) {
         console.error('[S3] Client initialization failed:', err.message);
         this.initialized = false;
       }
     } else {
-      console.warn('[S3] AWS credentials not found in environment. S3 uploads will operate in fallback mode.');
+      console.warn('[S3] AWS credentials not configured in environment. S3 operates in local fallback mode.');
       this.initialized = false;
     }
   }
 
   /**
-   * Generates predictable S3 key for detection images:
-   * prahari/detections/YYYY/MM/DD/<robotId>/<detectionId>.jpg
+   * Generates standard hierarchical S3 key for detection snapshots:
+   * prahari/detections/YYYY/MM/DD/<robotId>/<detectionId>/<subType>.jpg
    */
-  generateKey(detectionId, robotId = 'PRAHARI-01', subType = null) {
+  generateKey(detectionId, robotId = 'PRAHARI-01', subType = 'full') {
     const now = new Date();
     const year = now.getUTCFullYear();
     const month = String(now.getUTCMonth() + 1).padStart(2, '0');
     const day = String(now.getUTCDate()).padStart(2, '0');
     const safeRobotId = (robotId || 'PRAHARI-01').replace(/[^a-zA-Z0-9-_]/g, '');
     const safeDetId = (detectionId || `det_${Date.now()}`).replace(/[^a-zA-Z0-9-_]/g, '');
+    const safeSubType = (subType || 'full').replace(/[^a-zA-Z0-9-_]/g, '');
 
-    if (subType) {
-      const safeSubType = subType.replace(/[^a-zA-Z0-9-_]/g, '');
-      return `prahari/detections/${year}/${month}/${day}/${safeRobotId}/${safeDetId}/${safeSubType}.jpg`;
-    }
-    return `prahari/detections/${year}/${month}/${day}/${safeRobotId}/${safeDetId}.jpg`;
+    return `prahari/detections/${year}/${month}/${day}/${safeRobotId}/${safeDetId}/${safeSubType}.jpg`;
   }
 
   /**
-   * Uploads detection image buffer to S3 with automatic retries (up to 3 attempts)
+   * Generates standard hierarchical S3 key for manual/camera snapshots (Section 11):
+   * prahari/snapshots/YYYY/MM/DD/<robotId>/<snapshotId>.jpg
+   */
+  generateSnapshotKey(snapshotId, robotId = 'PRAHARI-01') {
+    const now = new Date();
+    const year = now.getUTCFullYear();
+    const month = String(now.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(now.getUTCDate()).padStart(2, '0');
+    const safeRobotId = (robotId || 'PRAHARI-01').replace(/[^a-zA-Z0-9-_]/g, '');
+    const safeSnapId = (snapshotId || `snap_${Date.now()}`).replace(/[^a-zA-Z0-9-_]/g, '');
+
+    return `prahari/snapshots/${year}/${month}/${day}/${safeRobotId}/${safeSnapId}.jpg`;
+  }
+
+  /**
+   * Uploads manual camera snapshot image buffer to AWS S3
+   */
+  async uploadSnapshotImage({
+    imageBuffer,
+    snapshotId,
+    robotId = 'PRAHARI-01',
+    mimeType = 'image/jpeg',
+  }) {
+    if (!imageBuffer || !(imageBuffer instanceof Buffer)) {
+      throw new Error('uploadSnapshotImage requires a valid Buffer');
+    }
+
+    const key = this.generateSnapshotKey(snapshotId, robotId);
+
+    if (!this.client || !this.initialized) {
+      console.warn(`[S3] Upload skipped (client not configured) | Key: ${key}`);
+      return {
+        key,
+        url: `/api/snapshots/${snapshotId}/image`,
+        uploadStatus: 'FAILED',
+        error: 'S3_CLIENT_NOT_CONFIGURED',
+      };
+    }
+
+    console.log(`[S3] Upload started | Bucket: ${this.bucketName} | Key: ${key} | Size: ${imageBuffer.length} bytes`);
+
+    const maxRetries = 3;
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const command = new PutObjectCommand({
+          Bucket: this.bucketName,
+          Key: key,
+          Body: imageBuffer,
+          ContentType: mimeType,
+          Metadata: {
+            robotId: String(robotId),
+            snapshotId: String(snapshotId),
+            type: 'CAMERA_SNAPSHOT',
+            timestamp: new Date().toISOString(),
+          },
+        });
+
+        await this.client.send(command);
+        console.log(`[S3] Upload successful (Attempt ${attempt}) | Key: ${key}`);
+
+        const url = await this.getDetectionImageUrl(key);
+        return {
+          key,
+          url,
+          bucket: this.bucketName,
+          uploadStatus: 'UPLOADED',
+        };
+      } catch (err) {
+        lastError = err;
+        console.warn(`[S3] Upload attempt ${attempt} failed: ${err.message}`);
+        if (attempt < maxRetries) {
+          await new Promise((resolve) => setTimeout(resolve, 500 * Math.pow(2, attempt - 1)));
+        }
+      }
+    }
+
+    console.error(`[S3] UPLOAD_FAILED after ${maxRetries} attempts:`, lastError?.message);
+    return {
+      key,
+      url: `/api/snapshots/${snapshotId}/image`,
+      uploadStatus: 'FAILED',
+      error: lastError?.message || 'S3_UPLOAD_FAILED',
+    };
+  }
+
+  /**
+   * Uploads detection image buffer to AWS S3 with automatic retries
    */
   async uploadDetectionImage({
     imageBuffer,
     detectionId,
     robotId = 'PRAHARI-01',
     mimeType = 'image/jpeg',
-    subType = null,
+    subType = 'full',
   }) {
     if (!imageBuffer || !(imageBuffer instanceof Buffer)) {
       throw new Error('uploadDetectionImage requires a valid Buffer');
@@ -105,10 +189,10 @@ class S3Service {
     const key = this.generateKey(detectionId, robotId, subType);
 
     if (!this.client || !this.initialized) {
-      console.warn(`[S3] Upload skipped - S3 client not configured. Key: ${key}`);
+      console.warn(`[S3] Upload skipped (client not configured) | Key: ${key}`);
       return {
         key,
-        url: `/api/detections/${detectionId}/image`,
+        url: `/api/detections/${detectionId}/image?subType=${subType}`,
         uploadStatus: 'FAILED',
         error: 'S3_CLIENT_NOT_CONFIGURED',
       };
@@ -129,6 +213,7 @@ class S3Service {
           Metadata: {
             robotId: String(robotId),
             detectionId: String(detectionId),
+            subType: String(subType),
             timestamp: new Date().toISOString(),
           },
         });
@@ -147,16 +232,15 @@ class S3Service {
         lastError = err;
         console.warn(`[S3] Upload attempt ${attempt}/${maxRetries} failed: ${err.message}`);
         if (attempt < maxRetries) {
-          // Exponential backoff wait
           await new Promise((resolve) => setTimeout(resolve, attempt * 300));
         }
       }
     }
 
-    console.error(`[S3] Upload FAILED after ${maxRetries} attempts | Bucket: ${this.bucketName} | Region: ${this.region} | Error: ${lastError?.message}`);
+    console.error(`[S3] Upload FAILED after ${maxRetries} attempts | Bucket: ${this.bucketName} | Error: ${lastError?.message}`);
     return {
       key,
-      url: null,
+      url: `/api/detections/${detectionId}/image?subType=${subType}`,
       uploadStatus: 'FAILED',
       error: lastError?.message || 'S3_UPLOAD_FAILED',
     };
@@ -242,8 +326,7 @@ class S3Service {
       console.log(`[S3] Batch deleted ${validKeys.length} objects from S3`);
       return { success: true, deletedCount: validKeys.length, response };
     } catch (err) {
-      console.error('[S3] Batch delete failed:', err.message);
-      // Attempt individual deletes as fallback
+      console.error('[S3] Batch delete failed, attempting sequential fallback:', err.message);
       let deleted = 0;
       for (const key of validKeys) {
         try {
