@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { s3Service } from './s3Service.js';
 import { Detection } from '../models/Detection.js';
 import { db } from '../config/db.js';
+import { geminiService } from './geminiService.js';
 
 /**
  * DetectionService
@@ -275,6 +276,35 @@ class DetectionService {
         io.emit('face:detected', detectionRecord);
       } else if (type === 'VEHICLE') {
         io.emit('vehicle:detected', detectionRecord);
+      }
+
+      // Event-driven asynchronous Gemini AI Intelligence trigger (non-blocking)
+      if (type === 'AMBULANCE' || type === 'ANPR' || (type === 'VEHICLE' && this.stats.totalVehicles % 10 === 0)) {
+        geminiService
+          .analyzeEvent({
+            event_id: id,
+            event_type: type === 'AMBULANCE' ? 'ambulance_detected' : type === 'ANPR' ? 'unknown_plate' : 'traffic_congestion',
+            robot_id: robotId,
+            timestamp,
+            ambulance_detected: type === 'AMBULANCE',
+            ambulance_confidence: type === 'AMBULANCE' ? confidence : null,
+            plates: plate ? [{ text: plate, confidence }] : [],
+            faces: personId ? [{ personId, personName, confidence }] : [],
+            vehicle_counts: this.stats,
+            recent_detections: this.detections.slice(0, 5),
+          })
+          .then((aiIncident) => {
+            if (aiIncident && io) {
+              io.emit('ai:incident', aiIncident);
+              io.emit('ai:analysis', aiIncident);
+              if (aiIncident.severity === 'high' || aiIncident.severity === 'critical') {
+                io.emit('ai:alert', aiIncident);
+              }
+            }
+          })
+          .catch((err) => {
+            console.warn(`[AI INTELLIGENCE] Event analysis notice: ${err.message}`);
+          });
       }
     }
 

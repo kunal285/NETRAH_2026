@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useRobot } from '../../context/RobotContext';
 import { VirtualJoystick } from '../control/VirtualJoystick.jsx';
 import { LiveAiOverlay } from '../vision/LiveAiOverlay.jsx';
+import { AiAssistantPanel } from '../ai/AiAssistantPanel.jsx';
 import {
   Battery,
   ShieldCheck,
@@ -392,6 +393,9 @@ export const DashboardView = () => {
           </div>
         )}
       </div>
+
+      {/* 5. Google Gemini AI Assistant & Incident Intelligence Panel */}
+      <AiAssistantPanel />
     </div>
   );
 };

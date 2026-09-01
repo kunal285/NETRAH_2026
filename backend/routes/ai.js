@@ -2,11 +2,178 @@ import express from 'express';
 import { inferenceService as aiInferenceService } from '../services/ai/inferenceService.js';
 import { aiService } from '../services/aiService.js';
 import { detectionService } from '../services/detectionService.js';
+import { geminiService } from '../services/geminiService.js';
+import { deviceService } from '../services/deviceService.js';
 import { db } from '../config/db.js';
 import { AiEvent } from '../models/AiEvent.js';
 import { NumberPlate } from '../models/NumberPlate.js';
 
 export const aiRouter = express.Router();
+
+// ===============================================================
+// GOOGLE GEMINI LLM & INTELLIGENCE GATEWAY ENDPOINTS
+// ===============================================================
+
+/**
+ * GET /api/ai/health
+ * Aggregated health status of the AI Perception & Gemini LLM engine
+ */
+aiRouter.get('/health', async (_req, res) => {
+  const geminiHealth = await geminiService.getHealth();
+  const stats = detectionService.getStats();
+
+  res.json({
+    status: 'healthy',
+    service: 'PRAHARI AI & Gemini Intelligence Gateway',
+    ai: 'online',
+    gemini: geminiHealth.gemini || 'connected',
+    gemini_model: geminiHealth.gemini_model || process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+    ocr: 'ONLINE',
+    stats,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+/**
+ * POST /api/ai/chat
+ * Interactive Operator AI Assistant grounded in live robot telemetry & detections
+ */
+aiRouter.post('/chat', async (req, res, next) => {
+  try {
+    const { message, history, context } = req.body || {};
+    if (!message) {
+      return res.status(400).json({ error: 'Message is required' });
+    }
+
+    // Build enriched live context if not provided
+    const robotState = deviceService.getDeviceState('PRAHARI-01');
+    const stats = detectionService.getStats();
+    const enrichedContext = {
+      robot_id: robotState?.robotId || 'PRAHARI-01',
+      control_mode: robotState?.controlMode || 'WEB',
+      battery_voltage: robotState?.battery?.voltage,
+      battery_percentage: robotState?.battery?.percentage,
+      obstacle_distance: robotState?.ultrasonic?.frontDistanceM,
+      vehicle_counts: {
+        total: stats.totalVehicles,
+        cars: stats.cars,
+        motorcycles: stats.motorcycles,
+        trucks: stats.trucks,
+        buses: stats.buses,
+      },
+      active_ambulance: Boolean(aiService.getActiveAmbulance() || stats.ambulances > 0),
+      recent_anpr_count: stats.anprPlates,
+      ...context,
+    };
+
+    const response = await geminiService.chat(message, history || [], enrichedContext);
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/ai/analyze-event
+ * Run on-demand structured Gemini analysis for an event or detection
+ */
+aiRouter.post('/analyze-event', async (req, res, next) => {
+  try {
+    const io = req.app.get('io');
+    const eventPayload = req.body || {};
+    const force = Boolean(req.query.force);
+
+    const result = await geminiService.analyzeEvent(eventPayload, force);
+
+    if (io) {
+      io.emit('ai:incident', result);
+      io.emit('ai:analysis', result);
+      if (result.severity === 'high' || result.severity === 'critical') {
+        io.emit('ai:alert', result);
+      }
+    }
+
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/ai/incident-summary
+ * Get natural language summary of events over the last N minutes
+ */
+aiRouter.post('/incident-summary', async (req, res, next) => {
+  try {
+    const minutes = Math.max(1, Math.min(60, Number(req.query.minutes || req.body?.minutes || 5)));
+    const stats = detectionService.getStats();
+    const context = {
+      vehicle_counts: stats,
+      robot: deviceService.getDeviceState('PRAHARI-01'),
+      ...req.body,
+    };
+
+    const summary = await geminiService.getIncidentSummary(minutes, context);
+    res.json(summary);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/ai/explain-detection
+ * Explain a specific plate, face, or vehicle detection
+ */
+aiRouter.post('/explain-detection', async (req, res, next) => {
+  try {
+    const { detection, telemetry } = req.body || {};
+    if (!detection) {
+      return res.status(400).json({ error: 'Detection object is required' });
+    }
+
+    const tel = telemetry || deviceService.getDeviceState('PRAHARI-01');
+    const result = await geminiService.explainDetection(detection, tel);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/ai/robot-status-analysis
+ * Electrical & mechanical telemetry diagnostics
+ */
+aiRouter.post('/robot-status-analysis', async (req, res, next) => {
+  try {
+    const telemetry = req.body?.telemetry || deviceService.getDeviceState('PRAHARI-01');
+    const result = await geminiService.analyzeRobotStatus(telemetry);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/ai/analyze-image
+ * Multimodal snapshot scene reasoning
+ */
+aiRouter.post('/analyze-image', async (req, res, next) => {
+  try {
+    const { image, eventMetadata, existingDetections } = req.body || {};
+    if (!image) {
+      return res.status(400).json({ error: 'Image base64 is required' });
+    }
+
+    const result = await geminiService.analyzeImage(image, eventMetadata, existingDetections);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ===============================================================
+// REAL-TIME PERCEPTION & LEGACY COMPATIBILITY ROUTES
+// ===============================================================
 
 // Real-time camera stream frame processing
 aiRouter.post('/process-frame', async (req, res, next) => {
@@ -20,14 +187,14 @@ aiRouter.post('/process-frame', async (req, res, next) => {
 });
 
 // AI Engine Health & Latency status
-aiRouter.get('/status', (req, res) => {
+aiRouter.get('/status', (_req, res) => {
   res.json(aiInferenceService.getStatus());
 });
 
 /**
  * GET /api/ai/camera-status (Phase 5 Camera Diagnostics)
  */
-aiRouter.get('/camera-status', (req, res) => {
+aiRouter.get('/camera-status', (_req, res) => {
   const streamUrl = process.env.ROBOT_CAMERA_STREAM_URL || null;
   const stats = detectionService.getStats();
   res.json({
@@ -47,7 +214,7 @@ aiRouter.get('/camera-status', (req, res) => {
 /**
  * GET /api/ai/debug (Phase 38 Health & Debug Endpoint)
  */
-aiRouter.get('/debug', (req, res) => {
+aiRouter.get('/debug', (_req, res) => {
   const streamUrl = process.env.ROBOT_CAMERA_STREAM_URL || null;
   const stats = detectionService.getStats();
   res.json({
@@ -123,7 +290,7 @@ aiRouter.get('/events', async (req, res, next) => {
 });
 
 // Clear Events
-aiRouter.delete('/events', (req, res) => {
+aiRouter.delete('/events', (_req, res) => {
   aiInferenceService.clearEvents();
   res.json({ success: true });
 });
@@ -152,7 +319,7 @@ aiRouter.get('/anpr', async (req, res, next) => {
 });
 
 // Active Ambulance
-aiRouter.get('/ambulance', (req, res) => {
+aiRouter.get('/ambulance', (_req, res) => {
   const active = aiInferenceService.getStatus().activeAmbulance || aiService.getActiveAmbulance();
   res.json({ activeAmbulance: active });
 });
@@ -193,7 +360,7 @@ aiRouter.post('/trigger', async (req, res) => {
 });
 
 // Historical Analytics Aggregation
-aiRouter.get('/analytics', async (req, res, next) => {
+aiRouter.get('/analytics', async (_req, res, next) => {
   try {
     const stats = detectionService.getStats();
     const analytics = {

@@ -1,140 +1,193 @@
-# PRAHARI V3 — Real-Time Robot Command Center
+# PRAHARI V3 — Autonomous & RC-Assisted Traffic-Police Robot Command Center
 
-[![PRAHARI V3 Architecture](https://img.shields.io/badge/PRAHARI-Arduino%20Nano%20%2B%20ESP32--CAM%20%2B%20BTS7960-emerald.svg)](https://github.com/kunal285/NETRAH_2026)
+[![PRAHARI V3 Architecture](https://img.shields.io/badge/PRAHARI-Arduino%20Nano%20%2B%20ESP32--CAM%20%2B%20Google%20Gemini%20LLM-emerald.svg)](https://github.com/kunal285/NETRAH_2026)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Google GenAI SDK](https://img.shields.io/badge/Google%20GenAI-2.0%2B-4285F4.svg)](https://ai.google.dev/)
+[![Docker Compose](https://img.shields.io/badge/Docker-Ready-2496ED.svg)](https://docker.com)
 
-An end-to-end real-time robot teleoperation command center and edge AI system for the **PRAHARI Traffic Police Robot (MK3)**.
-
----
-
-## 1. Hardware Architecture (CURRENT)
-
-```
-                    PRAHARI COMMAND CENTER (Website)
-                                   │
-                                   │ WebSocket
-                                   ▼
-                             NODE.JS BACKEND
-                                   │
-                                   │ USB / Serial (115200 Baud)
-                                   ▼
-                             ARDUINO NANO
-                                   │
-                     ┌─────────────┴─────────────┐
-                     ▼                           ▼
-               BTS7960 DRIVER              BTS7960 DRIVER
-                     │                           │
-                     ▼                           ▼
-              LEFT REAR MOTOR             RIGHT REAR MOTOR
-
-                            FRONT CASTER WHEEL
-                          (360° Passive Mechanical)
-
-
-CAMERA STREAM:
-                  ESP32-CAM (Wi-Fi MJPEG :80 / :8080)
-                         │
-                         ▼
-                WEBSITE & AI PERCEPTION
-
-
-PHYSICAL RC REMOTE:
-               RC TRANSMITTER ────▶ RC RECEIVER ────▶ ARDUINO NANO
-                                                       (Interrupts D2/D3)
-```
-
-- **Microcontroller**: Arduino Nano (ATmega328P, 16 MHz, 5V)
-- **Camera Sensor**: ESP32-CAM (OV2640, Wi-Fi MJPEG Video Streamer)
-- **Motor Drivers**: 2 × BTS7960 43A High-Power H-Bridge Drivers
-- **Motors**: 2 × DC Geared Drive Motors (Rear Left, Rear Right)
-- **Front Wheels**: Heavy-Duty 360° Passive Caster Wheels (**NO front steering servo, NO front motor**)
-- **Physical RC**: 2-4 Channel RC Receiver connected to Arduino Nano interrupt pins (Hardware Priority 2)
-- **Safety System**: 400ms Arduino command timeout (Auto-Stop on connection loss), Ultrasonic distance sensor (HC-SR04), Hardware Emergency Stop
+**PRAHARI** is an autonomous and RC-assisted traffic-police robot developed by **NETRA Robotics**. This command center platform provides teleoperation, real-time computer vision (YOLOv8 vehicle detection & classification, ANPR plate recognition, face AI), emergency ambulance corridor detection, and a high-level **Google Gemini LLM Intelligence Layer** for automated incident reasoning, operator alerts, and diagnostic analysis.
 
 ---
 
-## 2. Differential Drive Movement Mathematics
+## 1. System Architecture
 
-The website utilizes a single continuous game-style differential joystick:
-- **Y-Axis**: Throttle ($-1.0$ to $+1.0$)
-- **X-Axis**: Steering ($-1.0$ to $+1.0$)
+```
+Robot (MY1016 Motors + 2x BTS7960 + HC-SR04)
+  │
+  ▼
+Controller (Arduino Nano / ESP32-class)
+  │
+  ▼
+Camera (ESP32-CAM / RPi Cam) + Serial Telemetry (115200 Baud)
+  │
+  ▼ (Wi-Fi / Network)
+Backend API Gateway & WebSocket Engine (:4000)
+  │
+  ├── AI Perception & Intelligence Service (:8000)
+  │     ├── YOLOv8 Multi-Class Vehicle Detection
+  │     ├── ByteTrack Object Tracking
+  │     ├── Indian HSRP ANPR / OCR
+  │     ├── Face Recognition (Enrolled vs Unknown)
+  │     └── Google Gemini LLM Layer (Reasoning & Incident Intelligence)
+  │
+  ▼ (Socket.IO + REST)
+Web Dashboard Console (:3000)
+```
 
-$$\text{leftMotor} = \text{clamp}(\text{throttle} + \text{steering}, -1.0, 1.0) \times \text{speedLimit}$$
-$$\text{rightMotor} = \text{clamp}(\text{throttle} - \text{steering}, -1.0, 1.0) \times \text{speedLimit}$$
+---
 
-| Motion | Throttle | Steering | Left Motor Output | Right Motor Output |
-| :--- | :---: | :---: | :---: | :---: |
-| **Forward** | $+1.0$ | $0.0$ | $+100\%$ | $+100\%$ |
-| **Reverse** | $-1.0$ | $0.0$ | $-100\%$ | $-100\%$ |
-| **Turn Left** | $+0.7$ | $-0.3$ | $+40\%$ | $+100\%$ |
-| **Turn Right** | $+0.7$ | $+0.3$ | $+100\%$ | $+40\%$ |
-| **Spin Left** | $0.0$ | $-1.0$ | $-100\%$ | $+100\%$ |
-| **Spin Right** | $0.0$ | $+1.0$ | $+100\%$ | $-100\%$ |
-| **Stop** | $0.0$ | $0.0$ | $0\%$ | $0\%$ |
+## 2. Gemini LLM Intelligence & Safety Architecture
+
+> [!IMPORTANT]
+> **Deterministic Control Safety Policy**:
+> - **Gemini LLM NEVER controls motors directly.** Gemini cannot issue motor PWM, steering, speed commands, or emergency stop overrides.
+> - Deterministic safety firmware (400ms auto-stop timer, ultrasonic proximity threshold, physical RC priority override, operator E-stop) retains 100% control authority.
+> - **Zero Frontend Credential Exposure**: `GEMINI_API_KEY` resides strictly on the server-side AI service/backend environment and is never exposed to the browser.
+> - **Event-Driven AI**: Gemini is invoked only on meaningful events (ambulance detection, unknown plates, congestion spikes, hardware warnings, or operator questions), throttled with configurable cooldowns (e.g. 5 seconds) to prevent redundant API calls.
+
+### AI Pipeline Responsibilities
+- **YOLO / CV (Real-Time 10–30 FPS)**: Vehicle detection, classification (Car, Motorcycle, Truck, Bus), ambulance visual beacon detection, object tracking.
+- **ANPR / OCR**: Plate localization, crop extraction, character normalization.
+- **Face Recognition**: Embedding matching against enrolled police personnel.
+- **Google Gemini LLM**: High-level reasoning, incident summaries, natural language explanation, operator chat assistant, electrical/mechanical telemetry diagnostics.
 
 ---
 
 ## 3. Quick Start & Setup Guide
 
-### A. Arduino Nano Firmware Flashing
-1. Open [`firmware/arduino_nano/prahari_nano_driver.ino`](file:///d:/others/prahari-traffic-police-robot-command-center/firmware/arduino_nano/prahari_nano_driver.ino) in Arduino IDE.
-2. Select Board: **Arduino Nano**, Processor: **ATmega328P (Old Bootloader or standard)**.
-3. Upload to Arduino Nano over USB.
+### Option A. Docker Compose (Recommended for Production)
 
-### B. ESP32-CAM Firmware Flashing
-1. Open [`firmware/esp32_cam/prahari_esp32_cam.ino`](file:///d:/others/prahari-traffic-police-robot-command-center/firmware/esp32_cam/prahari_esp32_cam.ino) in Arduino IDE.
-2. Select Board: **AI Thinker ESP32-CAM**, configure Wi-Fi SSID & Password.
-3. Upload and note the assigned IP address (e.g. `http://192.168.4.1/video`).
+Run the entire stack with a single command:
 
-### C. Backend Setup (`backend/`)
 ```bash
-cd backend
-npm install
-npm start
-```
-*Runs on `http://localhost:4000`. Auto-connects to Arduino Nano on USB Serial (`COM3` or `/dev/ttyUSB0`) or runs in responsive simulation mode.*
+# 1. Clone repository and copy environment template
+cp .env.example .env
 
-### D. AI Perception Microservice (`ai-service/`)
+# 2. Add your Google Gemini API key to .env
+# GEMINI_API_KEY=your_gemini_api_key_here
+
+# 3. Build and launch all services
+docker compose up --build
+```
+
+Services will be available at:
+- **Frontend Dashboard**: `http://localhost:3000`
+- **Backend API Gateway**: `http://localhost:4000`
+- **AI Perception & Gemini Service**: `http://localhost:8000`
+- **MongoDB**: `localhost:27017`
+
+---
+
+### Option B. Local Development (Without Docker)
+
+#### 1. AI Service Setup
 ```bash
 cd ai-service
 pip install -r requirements.txt
 python main.py
+# Runs on http://localhost:8000
 ```
-*Runs on `http://localhost:8000` for YOLOv8 multi-class tracking, ANPR OCR, and Face AI.*
 
-### E. Next.js / React Command Center Frontend (`frontend/`)
+#### 2. Backend Setup
+```bash
+cd backend
+npm install
+npm start
+# Runs on http://localhost:4000
+```
+
+#### 3. Frontend Setup
 ```bash
 cd frontend
 npm install
 npm run dev
+# Runs on http://localhost:3000
 ```
-*Access command console at `http://localhost:3000`.*
 
 ---
 
-## 4. Control Modes & Priority Arbitration
+## 4. Environment Variables
 
-1. **Priority 1 — Hardware / Web Emergency Stop**: Immediate hard cutoff of all motor PWM outputs.
-2. **Priority 2 — Physical RC Transmitter**: When RC sticks are moved, Arduino Nano grants RC full driving priority and displays `🎮 RC CONTROL ACTIVE` on the web interface.
-3. **Priority 3 — Web Manual Control**: Virtual Game-Style Joystick, W/A/S/D Keyboard controls, or Gamepad API.
-4. **Priority 4 — Autonomous Mode**: High-level waypoint and AI navigation.
-
----
-
-## 5. Desktop Keyboard & Gamepad Shortcuts
-
-- `W` / `Up Arrow` : Forward
-- `S` / `Down Arrow` : Reverse
-- `A` / `Left Arrow` : Steer Left
-- `D` / `Right Arrow` : Steer Right
-- `Spacebar` : Instant Stop
-- `E` : Emergency Stop (Hard Kill Switch)
-- **Gamepad API**: Left analog stick controls Throttle & Steering with real-time deadzone compensation.
+| Variable | Description | Default / Example |
+| :--- | :--- | :--- |
+| `GEMINI_API_KEY` | Google Gemini API Key (**Server-side ONLY**) | `AIzaSy...` |
+| `GEMINI_MODEL` | Gemini LLM Model | `gemini-2.5-flash` |
+| `GEMINI_EVENT_COOLDOWN_SECONDS` | Debounce period between identical event analyses | `5` |
+| `AI_SERVICE_URL` | Microservice URL for AI perception & LLM | `http://localhost:8000` |
+| `BACKEND_URL` | Backend Gateway URL | `http://localhost:4000` |
+| `ROBOT_CAMERA_STREAM_URL` | ESP32-CAM or RPi camera stream URL | `http://192.168.4.1:8080/video` |
+| `PORT` | Backend HTTP Port | `4000` |
+| `DATABASE_URL` | MongoDB connection string (auto-fallbacks in-memory) | `mongodb://localhost:27017/prahari` |
+| `NEXT_PUBLIC_API_URL` | Frontend REST API target | `http://localhost:4000` |
+| `NEXT_PUBLIC_SOCKET_URL` | Frontend Socket.IO target | `http://localhost:4000` |
 
 ---
 
-## 6. Telemetry & Failsafe Guarantees
+## 5. API Endpoints
 
-- **Event-Driven Telemetry (10-20 Hz)**: Battery %, Voltage (36V), Left/Right Motor %, Left/Right Currents (A), Obstacle Distance (cm), Temperature (°C).
-- **Zero Full-Page Refresh**: All indicators update via persistent WebSocket with auto-reconnect backoff (1s, 2s, 4s, 8s, 10s max).
-- **Arduino Failsafe Timeout (400ms)**: If communication breaks between Backend and Arduino Nano, motors stop automatically within 400 milliseconds.
+### AI Service Endpoints (`ai-service` :8000)
+- `GET /health` — Service health & Gemini connectivity status
+- `POST /api/ai/analyze` — Structured incident analysis on detection & telemetry payload
+- `POST /api/ai/incident-summary?minutes=5` — Natural language incident summary over time window
+- `POST /api/ai/explain-detection` — Safety-vetted detection & OCR explanation
+- `POST /api/ai/chat` — Operator AI Assistant grounded in live robot telemetry
+- `POST /api/ai/robot-status-analysis` — Battery, motor current, and sensor diagnostics
+- `POST /api/ai/analyze-image` — Multimodal camera snapshot scene analysis
+- `POST /api/ai/process-frame` — Live camera frame YOLO/OCR inference
+- `GET /api/faces` & `POST /api/faces/enroll` — Face recognition database management
+
+### Backend Gateway Endpoints (`backend` :4000)
+- `GET /health` — Full system health check (Backend, DB, S3, Arduino, AI)
+- `GET /api/ai/health` — AI service health proxy
+- `POST /api/ai/chat` — AI Assistant chat gateway with auto-enriched telemetry
+- `POST /api/ai/analyze-event` — On-demand event analysis trigger
+- `POST /api/ai/incident-summary` — Time-windowed incident summary
+- `POST /api/ai/explain-detection` — Detection explanation gateway
+- `POST /api/ai/robot-status-analysis` — Telemetry analysis gateway
+- `GET /api/detections` & `POST /api/detections` — Detection logs & ingestion
+- `POST /api/robot/command` — Teleoperation drive & steering commands
+
+---
+
+## 6. Real-Time Socket.IO Events
+
+| Event | Direction | Description |
+| :--- | :--- | :--- |
+| `ai:incident` | Server ➔ Client | Structured Gemini incident report (`summary`, `severity`, `recommended_action`) |
+| `ai:alert` | Server ➔ Client | High / Critical priority emergency vehicle or safety alert |
+| `ai:analysis` | Server ➔ Client | Diagnostic intelligence updates |
+| `ai:status` | Server ➔ Client | AI engine model, OCR status, latency metrics |
+| `robot:telemetry` | Server ➔ Client | Real-time battery voltage, motor current, ultrasonic distance |
+| `control:drive_vector` | Client ➔ Server | Continuous differential joystick throttle & steering |
+| `control:estop` | Client ➔ Server | Immediate hardware safety emergency stop |
+
+---
+
+## 7. Testing & Verification
+
+### Run AI Service Unit Tests
+```bash
+python -m pytest ai-service/tests
+```
+*Validates health checks, Gemini client, deterministic safety fallbacks, structured Pydantic response validation, telemetry analysis, event debouncing, and REST routes.*
+
+### Run Backend Gateway Integration Tests
+```bash
+node backend/scripts/test-ai-gateway.js
+```
+*Validates backend-to-AI communication, health aggregation, fallback responses, chat assistant, and telemetry analysis.*
+
+---
+
+## 8. Safety & Failsafe Guarantees
+
+1. **RC Hardware Priority**: Physical RC controller interrupts on Arduino Nano take instantaneous priority over web commands.
+2. **Watchdog Auto-Stop**: If no packet is received for >400ms, motors immediately cut power.
+3. **Obstacle Collision Avoidance**: Front ultrasonic sensor distance (<30cm) initiates deterministic cutoff.
+4. **Current Limiting**: BTS7960 drivers monitor motor current draw to prevent stall overcurrent.
+5. **Deterministic Emergency Stop**: E-stop latches in hardware firmware and ignores all autonomous/AI inputs until manually reset by operator.
+
+---
+
+## License
+MIT License — NETRA Robotics (2026).

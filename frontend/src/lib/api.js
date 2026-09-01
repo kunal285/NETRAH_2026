@@ -280,4 +280,77 @@ export const api = {
     if (!res.ok) throw new Error('Failed to run test camera snapshot');
     return res.json();
   },
+
+  // ===============================================================
+  // GEMINI LLM & INTELLIGENCE API METHODS
+  // ===============================================================
+
+  async chatWithAi(payload) {
+    const res = await fetch(`${API_BASE}/ai/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'AI chat request failed' }));
+      throw new Error(err.error || 'Failed to chat with AI Assistant');
+    }
+    return res.json();
+  },
+
+  async getAiHealth() {
+    const res = await fetch(`${API_BASE}/ai/health`);
+    if (!res.ok) throw new Error('Failed to fetch AI health status');
+    return res.json();
+  },
+
+  async analyzeAiEvent(payload, force = false) {
+    const res = await fetch(`${API_BASE}/ai/analyze-event?force=${force}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error('Failed to analyze AI event');
+    return res.json();
+  },
+
+  async getAiIncidentSummary(minutes = 5, context = {}) {
+    const res = await fetch(`${API_BASE}/ai/incident-summary?minutes=${minutes}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(context),
+    });
+    if (!res.ok) throw new Error('Failed to get AI incident summary');
+    return res.json();
+  },
+
+  async analyzeRobotStatus(telemetry) {
+    const res = await fetch(`${API_BASE}/ai/robot-status-analysis`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ telemetry }),
+    });
+    if (!res.ok) throw new Error('Failed to analyze robot status');
+    return res.json();
+  },
+
+  async explainDetection(detection, telemetry = {}) {
+    const res = await fetch(`${API_BASE}/ai/explain-detection`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ detection, telemetry }),
+    });
+    if (!res.ok) throw new Error('Failed to explain detection');
+    return res.json();
+  },
+
+  async analyzeImageWithAi(image, eventMetadata = {}, existingDetections = []) {
+    const res = await fetch(`${API_BASE}/ai/analyze-image`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image, eventMetadata, existingDetections }),
+    });
+    if (!res.ok) throw new Error('Failed to analyze image with AI');
+    return res.json();
+  },
 };

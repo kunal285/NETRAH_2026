@@ -134,8 +134,33 @@ export const RobotProvider = ({ children }) => {
     model: 'YOLOv8',
     ocr: 'ONLINE',
     inference: 'ACTIVE',
+    gemini: 'CONNECTED',
+    geminiModel: 'gemini-2.5-flash',
     latencyMs: 12,
   });
+  const [latestAiIncident, setLatestAiIncident] = useState({
+    summary: 'PRAHARI AI Intelligence layer active. Monitoring traffic sector.',
+    severity: 'low',
+    event_type: 'normal',
+    confidence: 0.95,
+    recommended_action: 'Maintain nominal autonomous or RC patrol.',
+    operator_message: 'Sector clear.',
+    reasoning_summary: 'Edge perception and sensor telemetry nominal.',
+    requires_operator_attention: false,
+    timestamp: new Date().toISOString(),
+  });
+  const [aiIncidentsHistory, setAiIncidentsHistory] = useState([]);
+  const [aiAssistantMessages, setAiAssistantMessages] = useState([
+    {
+      id: 'init-1',
+      role: 'assistant',
+      content: 'Hello Officer. I am PRAHARI AI, your command center intelligence assistant. I analyze live telemetry, vehicle counts, emergency corridors, and ANPR events. How can I assist you?',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      severity: 'low',
+      suggested_actions: ['Summarize traffic conditions', 'Was an ambulance detected?', 'Check robot condition', 'Are there safety concerns?'],
+    },
+  ]);
+  const [isAiResponding, setIsAiResponding] = useState(false);
   const [liveDetections, setLiveDetections] = useState([]);
   const [liveEvents, setLiveEvents] = useState([]);
   const [anprList, setAnprList] = useState([]);
@@ -527,6 +552,23 @@ export const RobotProvider = ({ children }) => {
       }
     });
 
+    // Gemini AI Intelligence Socket Events
+    const handleAiIncident = (incident) => {
+      if (!incident) return;
+      setLatestAiIncident(incident);
+      setAiIncidentsHistory((prev) => [incident, ...prev.slice(0, 49)]);
+      if (incident.latency_ms) {
+        setAiStatus((prev) => ({ ...prev, latencyMs: incident.latency_ms }));
+      }
+    };
+
+    socket.on('ai:incident', handleAiIncident);
+    socket.on('ai:alert', handleAiIncident);
+    socket.on('ai:analysis', handleAiIncident);
+    socket.on('ai:status', (st) => {
+      if (st) setAiStatus((prev) => ({ ...prev, ...st }));
+    });
+
     return () => {
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
@@ -546,6 +588,10 @@ export const RobotProvider = ({ children }) => {
       socket.off('vehicle:detected');
       socket.off('command:ack', handleCommandAck);
       socket.off('device:ack', handleCommandAck);
+      socket.off('ai:incident', handleAiIncident);
+      socket.off('ai:alert', handleAiIncident);
+      socket.off('ai:analysis', handleAiIncident);
+      socket.off('ai:status');
     };
   }, [fetchInitialData, selectedRobotId]);
 
@@ -656,6 +702,114 @@ export const RobotProvider = ({ children }) => {
     }
   }, []);
 
+  // AI Assistant Chat Dispatch
+  const sendAiChatMessage = useCallback(
+    async (userMessage) => {
+      if (!userMessage || !userMessage.trim()) return;
+
+      const userMsgObj = {
+        id: `usr-${Date.now()}`,
+        role: 'user',
+        content: userMessage.trim(),
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+
+      setAiAssistantMessages((prev) => [...prev, userMsgObj]);
+      setIsAiResponding(true);
+
+      try {
+        const historyPayload = aiAssistantMessages.slice(-6).map((m) => ({
+          role: m.role,
+          content: m.content,
+        }));
+
+        const contextPayload = {
+          robot_id: selectedRobotId,
+          robot_status: robotStatus,
+          control_mode: controlMode,
+          battery_voltage: liveBattery.voltage,
+          obstacle_distance: liveUltrasonic.frontDistanceM,
+          vehicle_counts: counters,
+          active_ambulance: Boolean(activeAmbulance),
+          recent_incident: latestAiIncident,
+        };
+
+        const res = await api.chatWithAi({
+          message: userMessage.trim(),
+          history: historyPayload,
+          context: contextPayload,
+        });
+
+        const aiMsgObj = {
+          id: `ai-${Date.now()}`,
+          role: 'assistant',
+          content: res.reply || 'Understood. Monitoring sector.',
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          severity: res.severity || 'low',
+          suggested_actions: res.suggested_actions || [],
+        };
+
+        setAiAssistantMessages((prev) => [...prev, aiMsgObj]);
+      } catch (err) {
+        const fallbackMsgObj = {
+          id: `ai-err-${Date.now()}`,
+          role: 'assistant',
+          content: `AI Service notice: ${err.message || 'Unable to connect'}. Robot control and telemetry remain fully operational.`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          severity: 'low',
+          suggested_actions: ['Retry question', 'Inspect Telemetry'],
+        };
+        setAiAssistantMessages((prev) => [...prev, fallbackMsgObj]);
+      } finally {
+        setIsAiResponding(false);
+      }
+    },
+    [selectedRobotId, robotStatus, controlMode, liveBattery, liveUltrasonic, counters, activeAmbulance, latestAiIncident, aiAssistantMessages]
+  );
+
+  const requestAiIncidentSummary = useCallback(
+    async (minutes = 5) => {
+      try {
+        const summary = await api.getAiIncidentSummary(minutes, {
+          vehicle_counts: counters,
+          active_ambulance: Boolean(activeAmbulance),
+        });
+        if (summary?.ai_summary) {
+          setLatestAiIncident(summary.ai_summary);
+        }
+        return summary;
+      } catch (err) {
+        console.warn('Incident summary request error:', err);
+      }
+    },
+    [counters, activeAmbulance]
+  );
+
+  const requestRobotStatusAnalysis = useCallback(async () => {
+    try {
+      const res = await api.analyzeRobotStatus({
+        battery_voltage: liveBattery.voltage,
+        motor_current_left: liveMotors.left.current,
+        motor_current_right: liveMotors.right.current,
+        obstacle_distance_cm: liveUltrasonic.frontDistanceCm,
+      });
+      return res;
+    } catch (err) {
+      console.warn('Robot status analysis error:', err);
+    }
+  }, [liveBattery, liveMotors, liveUltrasonic]);
+
+  const requestAiDetectionExplanation = useCallback(async (detection) => {
+    try {
+      const res = await api.explainDetection(detection, {
+        battery_voltage: liveBattery.voltage,
+      });
+      return res;
+    } catch (err) {
+      console.warn('Detection explanation error:', err);
+    }
+  }, [liveBattery]);
+
   return (
     <RobotContext.Provider
       value={{
@@ -755,6 +909,17 @@ export const RobotProvider = ({ children }) => {
         setActiveTab,
         isEmergencyModalOpen,
         setIsEmergencyModalOpen,
+
+        // Gemini AI Intelligence Suite
+        latestAiIncident,
+        setLatestAiIncident,
+        aiIncidentsHistory,
+        aiAssistantMessages,
+        isAiResponding,
+        sendAiChatMessage,
+        requestAiIncidentSummary,
+        requestRobotStatusAnalysis,
+        requestAiDetectionExplanation,
 
         // Helpers & Dispatches
         formatFreshness,

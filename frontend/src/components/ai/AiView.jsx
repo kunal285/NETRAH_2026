@@ -12,6 +12,7 @@ import { TrafficDensityPanel } from './TrafficDensityPanel';
 import { CrosswalkSafetyPanel } from './CrosswalkSafetyPanel';
 import { AnprLiveTable } from './AnprLiveTable';
 import { AiSettingsModal } from './AiSettingsModal';
+import { AiAssistantPanel } from './AiAssistantPanel';
 
 import {
   BrainCircuit,
@@ -105,7 +106,10 @@ export const AiView = () => {
       {/* 2. Top Real-time Status Bar */}
       <TopLiveStatusBar cameraActive={cameraActive} currentCameraName={cameraSource} />
 
-      {/* 3. Camera Source & Video Stream Ingestion Manager */}
+      {/* 3. Google Gemini AI Assistant & Incident Intelligence */}
+      <AiAssistantPanel />
+
+      {/* 4. Camera Source & Video Stream Ingestion Manager */}
       <CameraManager onCameraStateChange={handleCameraStateChange} />
 
       {/* 4. Core Live Perception Canvas + Real-time Scrolling Event Feed */}
