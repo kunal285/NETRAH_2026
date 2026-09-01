@@ -52,10 +52,9 @@ class CameraSnapshotService extends EventEmitter {
   } = {}) {
     console.log('[SNAPSHOT] Request received');
 
-    // 1. Check Camera Status
-    console.log('[CAMERA] Checking camera');
+    // 1. Check Camera & AI Service Sources
+    const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
     const streamUrl = process.env.ROBOT_CAMERA_STREAM_URL || process.env.ESP32_CAM_STREAM_URL || 'http://192.168.4.1:8080/video';
-    console.log('[CAMERA] Camera connected');
 
     // 2. Capture Current Frame
     console.log('[SNAPSHOT] Capturing current frame');
@@ -73,7 +72,28 @@ class CameraSnapshotService extends EventEmitter {
       }
     }
 
-    // If client didn't supply frame, attempt direct fetch from camera snapshot endpoint
+    // Attempt 1: Direct fetch from AI Microservice camera frame endpoint
+    if (!frameBuffer || frameBuffer.length === 0) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2500);
+        const resp = await fetch(`${aiServiceUrl}/api/ai/camera/frame`, { signal: controller.signal });
+        clearTimeout(timeoutId);
+
+        if (resp.ok) {
+          const arrayBuf = await resp.arrayBuffer();
+          if (arrayBuf && arrayBuf.byteLength > 100) {
+            frameBuffer = Buffer.from(arrayBuf);
+            mimeType = resp.headers.get('content-type') || 'image/jpeg';
+            console.log(`[SNAPSHOT] Retrieved live frame from AI service (${frameBuffer.length} bytes)`);
+          }
+        }
+      } catch (err) {
+        console.warn('[SNAPSHOT] AI service frame retrieval notice:', err.message);
+      }
+    }
+
+    // Attempt 2: Direct fetch from Camera stream snapshot endpoint
     if (!frameBuffer || frameBuffer.length === 0) {
       if (streamUrl && !streamUrl.includes('localhost') && !streamUrl.includes('127.0.0.1')) {
         try {
@@ -148,16 +168,24 @@ class CameraSnapshotService extends EventEmitter {
       };
     }
 
-    // 5. Database Persistence (Section 14)
+    // 5. Database Persistence & Standard Filename Generation
+    const dateObj = new Date();
+    const dStr = dateObj.toISOString().replace(/[-:T]/g, '').slice(0, 14);
+    const filename = `prahari_${dStr}_001.jpg`;
+
     const snapshotRecord = {
       snapshotId,
+      snapshot_id: snapshotId,
+      filename,
       robotId,
       s3Key: uploadResult.key || s3Key,
       imageUrl: uploadResult.url || `/api/snapshots/${snapshotId}/image`,
+      url: uploadResult.url || `/api/snapshots/${snapshotId}/image`,
       imageUploadStatus: uploadResult.uploadStatus || 'PENDING',
       width,
       height,
       fileSize: frameBuffer.length,
+      size: frameBuffer.length,
       mimeType,
       source,
       metadata: {
@@ -165,6 +193,7 @@ class CameraSnapshotService extends EventEmitter {
         uploadAttemptedAt: new Date().toISOString(),
       },
       createdAt: new Date(),
+      timestamp: new Date().toISOString(),
     };
 
     try {
@@ -185,12 +214,16 @@ class CameraSnapshotService extends EventEmitter {
     if (io) {
       io.emit('snapshot:created', {
         snapshotId,
+        snapshot_id: snapshotId,
+        filename,
         robotId,
         imageUrl: snapshotRecord.imageUrl,
+        url: snapshotRecord.imageUrl,
         s3Key: snapshotRecord.s3Key,
         width,
         height,
         fileSize: snapshotRecord.fileSize,
+        size: snapshotRecord.fileSize,
         timestamp: snapshotRecord.createdAt,
       });
       console.log('[SOCKET] snapshot:created emitted');

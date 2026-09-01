@@ -24,6 +24,7 @@ export function createApiRouter() {
   router.use('/images', imageRouter);
   router.use('/storage', storageRouter);
   router.use('/camera', cameraRouter);
+  router.use('/snapshot', snapshotsRouter);
   router.use('/snapshots', snapshotsRouter);
   router.use('/detections', detectionRouter);
   router.use('/ai', aiRouter);

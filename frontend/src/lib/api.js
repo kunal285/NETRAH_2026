@@ -242,16 +242,20 @@ export const api = {
 
   // Snapshots (Section 6, 15, 19, 28, 29)
   async takeCameraSnapshot(payload = {}) {
-    const res = await fetch(`${API_BASE}/robot/camera/snapshot`, {
+    const res = await fetch(`${API_BASE}/snapshot`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: 'Snapshot capture failed' }));
-      throw new Error(err.error || 'Failed to capture snapshot');
+      throw new Error(err.message || err.error || 'Failed to capture snapshot');
     }
     return res.json();
+  },
+
+  async takeSnapshot(payload = {}) {
+    return this.takeCameraSnapshot(payload);
   },
 
   async getSnapshots(params = {}) {

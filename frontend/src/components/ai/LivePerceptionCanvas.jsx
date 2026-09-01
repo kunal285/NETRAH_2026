@@ -171,19 +171,54 @@ export const LivePerceptionCanvas = ({ videoRef }) => {
     }
   }, [liveDetections, showHUD, showLanes, showCrosswalk, crosswalkRisk]);
 
+  const [snapshotState, setSnapshotState] = useState('idle'); // 'idle' | 'capturing' | 'captured' | 'uploaded' | 'error'
+  const [snapshotResult, setSnapshotResult] = useState(null);
+
   const captureSnapshot = async () => {
-    if (!canvasRef.current) return;
-    const dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.90);
+    if (snapshotState === 'capturing') return;
+    setSnapshotState('capturing');
+    setSavedSnapshot(null);
+
     try {
-      const blob = await (await fetch(dataUrl)).blob();
-      const image = await api.uploadCapturedImage(blob, {
-        cameraSource: cameraSource || 'live_stream',
-        imageType: 'detection evidence',
+      let imageBase64 = null;
+
+      // 1. If live video element is active, capture direct crystal-clear video frame
+      if (videoDisplayRef.current && activeMediaStream) {
+        try {
+          const offCanvas = document.createElement('canvas');
+          const vid = videoDisplayRef.current;
+          offCanvas.width = vid.videoWidth || 1280;
+          offCanvas.height = vid.videoHeight || 720;
+          const offCtx = offCanvas.getContext('2d');
+          offCtx.drawImage(vid, 0, 0, offCanvas.width, offCanvas.height);
+          imageBase64 = offCanvas.toDataURL('image/jpeg', 0.90);
+        } catch {}
+      }
+
+      setSnapshotState('captured');
+
+      // 2. Call backend snapshot API
+      const res = await api.takeCameraSnapshot({
+        robotId: 'PRAHARI-01',
+        image: imageBase64,
+        source: cameraSource || 'LIVE_FEED',
       });
-      setSavedSnapshot(image.imageUrl);
-      setTimeout(() => setSavedSnapshot(null), 3000);
-    } catch {
-      // Fallback
+
+      if (res && (res.success || res.url || res.signedUrl)) {
+        setSnapshotState('uploaded');
+        setSnapshotResult(res);
+        setSavedSnapshot(res.signedUrl || res.url || res.imageUrl);
+        setTimeout(() => {
+          setSnapshotState('idle');
+          setSavedSnapshot(null);
+        }, 4000);
+      } else {
+        throw new Error(res?.error || 'SNAPSHOT_FAILED');
+      }
+    } catch (err) {
+      console.error('[SNAPSHOT CAPTURE ERROR]', err);
+      setSnapshotState('error');
+      setTimeout(() => setSnapshotState('idle'), 3000);
     }
   };
 
@@ -232,10 +267,25 @@ export const LivePerceptionCanvas = ({ videoRef }) => {
           <button
             id="btn-take-snapshot"
             onClick={captureSnapshot}
-            className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-semibold text-xs flex items-center gap-1 shadow-xs cursor-pointer"
+            disabled={snapshotState === 'capturing'}
+            className={`px-3 py-1.5 rounded-lg text-white font-semibold text-xs flex items-center gap-1.5 shadow-xs transition cursor-pointer disabled:opacity-50 ${
+              snapshotState === 'capturing'
+                ? 'bg-amber-600'
+                : snapshotState === 'uploaded'
+                ? 'bg-emerald-700'
+                : 'bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800'
+            }`}
           >
             <Camera className="w-3.5 h-3.5" />
-            <span>Snap</span>
+            <span>
+              {snapshotState === 'capturing'
+                ? 'Capturing...'
+                : snapshotState === 'captured'
+                ? 'Captured'
+                : snapshotState === 'uploaded'
+                ? 'Upload complete'
+                : 'Snapshot'}
+            </span>
           </button>
         </div>
       </div>
@@ -296,9 +346,22 @@ export const LivePerceptionCanvas = ({ videoRef }) => {
         />
 
         {savedSnapshot && (
-          <div className="absolute top-4 right-4 z-30 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 text-white text-xs font-bold shadow-lg animate-fade-in">
-            <CheckCircle2 className="w-4 h-4" />
-            <span>Snapshot Saved</span>
+          <div className="absolute top-4 right-4 z-30 flex items-center gap-2 p-2 rounded-xl bg-slate-900/95 border border-emerald-500/50 text-white text-xs font-bold shadow-xl animate-fade-in">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <div className="flex flex-col">
+              <span className="text-emerald-400 font-mono text-[11px]">Snapshot Saved</span>
+              {snapshotResult?.filename && (
+                <span className="text-[10px] text-slate-300 font-mono">{snapshotResult.filename}</span>
+              )}
+            </div>
+            <a
+              href={savedSnapshot}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[10px] uppercase font-mono ml-1"
+            >
+              Preview
+            </a>
           </div>
         )}
       </div>

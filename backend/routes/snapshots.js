@@ -5,10 +5,10 @@ import { s3Service } from '../services/s3Service.js';
 export const snapshotsRouter = express.Router();
 
 /**
- * POST /api/robot/camera/snapshot or POST /api/snapshots/capture
+ * POST /api/snapshot or POST /api/snapshots or POST /api/snapshots/capture
  * Captures real live frame from camera, uploads to AWS S3, saves to DB, emits Socket.IO event
  */
-snapshotsRouter.post('/capture', async (req, res) => {
+const handleSnapshotCapture = async (req, res) => {
   try {
     const { robotId, image, source } = req.body || {};
     const io = req.app.get('io');
@@ -29,25 +29,33 @@ snapshotsRouter.post('/capture', async (req, res) => {
 
     res.json({
       success: true,
+      snapshot_id: result.snapshotId,
       snapshotId: result.snapshotId,
+      filename: result.filename,
       robotId: result.robotId,
       s3Key: result.s3Key,
+      url: signedUrl || result.imageUrl,
       imageUrl: result.imageUrl,
       signedUrl: signedUrl || result.imageUrl,
       imageUploadStatus: result.imageUploadStatus,
       width: result.width,
       height: result.height,
+      size: result.fileSize,
       fileSize: result.fileSize,
-      timestamp: result.createdAt || new Date().toISOString(),
+      timestamp: result.timestamp || result.createdAt || new Date().toISOString(),
     });
   } catch (err) {
     console.error('[SNAPSHOT ROUTE ERROR]', err.message);
     res.status(500).json({
       success: false,
-      error: err.message || 'SNAPSHOT_CAPTURE_FAILED',
+      error: 'CAMERA_UNAVAILABLE',
+      message: err.message || 'Unable to capture a frame from the robot camera.',
     });
   }
-});
+};
+
+snapshotsRouter.post('/', handleSnapshotCapture);
+snapshotsRouter.post('/capture', handleSnapshotCapture);
 
 /**
  * GET /api/snapshots

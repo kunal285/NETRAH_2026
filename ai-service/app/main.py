@@ -21,6 +21,9 @@ from .utils.logger import logger
 from .services.vision_service import vision_service
 from .services.gemini_service import gemini_service
 from .routes.health import health_router
+from .routes.camera import camera_router
+from .routes.anpr import anpr_router
+from .routes.snapshot import snapshot_router
 from .routes.gemini import gemini_router
 from .routes.perception import perception_router
 from .routes.faces import faces_router
@@ -93,17 +96,16 @@ def _stream_worker():
             logger.warning(f"[CAMERA] Stream worker warning: {e}")
             time.sleep(3)
 
+from .services.camera_service import camera_service
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global stream_worker_running, stream_worker_thread
     logger.info("Initializing PRAHARI AI Perception & Intelligence Service...")
     if settings.ROBOT_CAMERA_STREAM_URL:
-        stream_worker_running = True
-        stream_worker_thread = threading.Thread(target=_stream_worker, daemon=True)
-        stream_worker_thread.start()
+        camera_service.connect(settings.ROBOT_CAMERA_STREAM_URL)
     yield
     logger.info("Shutting down PRAHARI AI Service...")
-    stream_worker_running = False
+    camera_service.release()
 
 app = FastAPI(
     title="PRAHARI V3 AI Perception & Intelligence Service",
@@ -122,6 +124,9 @@ app.add_middleware(
 
 # Register modular routes
 app.include_router(health_router)
+app.include_router(camera_router)
+app.include_router(anpr_router)
+app.include_router(snapshot_router)
 app.include_router(gemini_router)
 app.include_router(perception_router)
 app.include_router(faces_router)
