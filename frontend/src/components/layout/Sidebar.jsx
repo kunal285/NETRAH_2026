@@ -68,17 +68,17 @@ export const Sidebar = () => {
         })}
       </nav>
 
-      {/* Raspberry Pi 5 Engineering Specs Card */}
+      {/* Arduino Nano RP2040 Connect Engineering Specs Card */}
       <div className="pt-4 border-t border-slate-100">
         <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 text-[11px] text-slate-500 space-y-1.5">
           <div className="flex items-center justify-between font-bold text-slate-800">
-            <span>Raspberry Pi 5 (8GB)</span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">ARM64</span>
+            <span>Arduino Nano RP2040</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">RP2040</span>
           </div>
-          <div className="text-[10px]">Dual 36V 350W MY1016 • RP1 I/O</div>
+          <div className="text-[10px]">Dual BTS7960 • 11.5V Li-ion Pack</div>
           <div className="flex items-center gap-1.5 text-emerald-600 font-medium text-[10px]">
             <ShieldCheck className="w-3.5 h-3.5" />
-            <span>BTS7960 Driver Online</span>
+            <span>Driver System Ready</span>
           </div>
         </div>
       </div>

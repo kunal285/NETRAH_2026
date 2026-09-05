@@ -193,6 +193,67 @@ export const api = {
     return res.json();
   },
 
+  // Google Gemini AI Intelligence Suite Endpoints
+  async chatWithAi({ message, history = [], context = {} }) {
+    const res = await fetch(`${API_BASE}/ai/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, history, context }),
+    });
+    if (!res.ok) throw new Error('Failed to fetch reply from Gemini AI');
+    return res.json();
+  },
+
+  async getAiIncidentSummary(minutes = 5, context = {}) {
+    const res = await fetch(`${API_BASE}/ai/incident-summary?minutes=${minutes}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(context),
+    });
+    if (!res.ok) throw new Error('Failed to get Gemini incident summary');
+    return res.json();
+  },
+
+  async explainDetection(detection, telemetry = {}) {
+    const res = await fetch(`${API_BASE}/ai/explain-detection`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ detection, telemetry }),
+    });
+    if (!res.ok) throw new Error('Failed to explain detection with Gemini AI');
+    return res.json();
+  },
+
+  async analyzeRobotStatus(telemetry = {}) {
+    const res = await fetch(`${API_BASE}/ai/robot-status-analysis`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ telemetry }),
+    });
+    if (!res.ok) throw new Error('Failed to analyze robot status with Gemini AI');
+    return res.json();
+  },
+
+  async analyzeImageWithAi(image, eventMetadata = {}, existingDetections = []) {
+    const res = await fetch(`${API_BASE}/ai/analyze-image`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image, eventMetadata, existingDetections }),
+    });
+    if (!res.ok) throw new Error('Failed to analyze image with Gemini AI');
+    return res.json();
+  },
+
+  async analyzeEventWithAi(eventPayload = {}, force = false) {
+    const res = await fetch(`${API_BASE}/ai/analyze-event?force=${force}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(eventPayload),
+    });
+    if (!res.ok) throw new Error('Failed to analyze event with Gemini AI');
+    return res.json();
+  },
+
   // Settings & Parameters
   async getSettings() {
     const res = await fetch(`${API_BASE}/settings`);

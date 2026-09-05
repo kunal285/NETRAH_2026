@@ -52,7 +52,7 @@ export default function LandingPage() {
             </h1>
 
             <p className="text-base text-slate-600 leading-relaxed max-w-xl sm:text-lg">
-              Monitor multi-lane vehicle tracking, Indian HSRP license plate segmentation, 36V powertrain telemetry, and acoustic emergency green corridor preemption.
+              Monitor multi-lane vehicle tracking, Indian HSRP license plate segmentation, powertrain telemetry, and acoustic emergency green corridor preemption.
             </p>
 
             <div className="flex flex-wrap items-center gap-3 pt-2">
@@ -91,8 +91,8 @@ export default function LandingPage() {
 
             <div className="grid grid-cols-2 gap-3 font-mono">
               <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
-                <div className="text-[10px] text-slate-400 font-bold uppercase">Battery (36V)</div>
-                <div className="text-lg font-black text-emerald-700">37.8 V (92%)</div>
+                <div className="text-[10px] text-slate-400 font-bold uppercase">Battery (11.5V)</div>
+                <div className="text-lg font-black text-emerald-700">11.8 V (92%)</div>
               </div>
               <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
                 <div className="text-[10px] text-slate-400 font-bold uppercase">Radar Status</div>

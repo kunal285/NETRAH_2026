@@ -178,8 +178,8 @@ class GeminiService {
 
       return await res.json();
     } catch (err) {
-      const bat = Number(telemetry.batteryVoltage || telemetry.battery_voltage || 34.0);
-      const isLow = bat < 31.5;
+      const bat = Number(telemetry.batteryVoltage || telemetry.battery_voltage || 11.8);
+      const isLow = bat < 10.5;
       return {
         status_summary: isLow ? `Battery low (${bat}V). Telemetry nominal otherwise.` : 'Robot hardware metrics within normal operating bounds.',
         health_rating: isLow ? 'WARNING' : 'OPTIMAL',

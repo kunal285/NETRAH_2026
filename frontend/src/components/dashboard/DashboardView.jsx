@@ -396,14 +396,14 @@ export const DashboardView = () => {
                 OBSTACLE: <strong className="text-emerald-400">{liveUltrasonic.frontDistanceCm || 87}cm</strong>
               </div>
               <div className="bg-black/70 backdrop-blur-md px-2 py-0.5 rounded border border-white/10">
-                VOLTAGE: <strong className="text-emerald-400">{liveBattery.voltage || '35.8'}V</strong>
+                VOLTAGE: <strong className="text-emerald-400">{liveBattery.voltage || '11.8'}V</strong>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* 3. Real-Time Telemetry Strip (Section 43: 🔋 82% | ⚡ 35.8V | LEFT 65% | RIGHT 58% | 🚧 87cm | 🌡 42°C) */}
+      {/* 3. Real-Time Telemetry Strip (Section 43: 🔋 82% | ⚡ 11.8V | LEFT 65% | RIGHT 58% | 🚧 87cm | 🌡 42°C) */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-center text-xs font-mono font-bold">
         <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs space-y-0.5">
           <div className="text-[10px] text-slate-400 uppercase font-bold flex items-center justify-center gap-1">
@@ -418,7 +418,7 @@ export const DashboardView = () => {
             <Zap className="w-3.5 h-3.5 text-amber-500" />
             <span>VOLTAGE</span>
           </div>
-          <div className="text-lg font-black text-slate-900">{liveBattery.voltage || '35.8'}V</div>
+          <div className="text-lg font-black text-slate-900">{liveBattery.voltage || '11.8'}V</div>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs space-y-0.5">

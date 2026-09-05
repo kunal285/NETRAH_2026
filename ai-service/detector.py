@@ -207,9 +207,17 @@ class PerceptionDetector:
         }
 
         self.face_cascade = None
-        self._init_cascades()
+        self.yolo_model = None
+        self._init_models()
 
-    def _init_cascades(self):
+    def _init_models(self):
+        try:
+            from ultralytics import YOLO
+            self.yolo_model = YOLO("yolov8n.pt")
+            print(f"[PERCEPTION] Ultralytics YOLOv8 loaded on {self.device}")
+        except Exception as e:
+            print(f"[PERCEPTION] Edge vision pipeline active (YOLO notice: {e})")
+
         try:
             cascade_dir = cv2.data.haarcascades
             face_path = os.path.join(cascade_dir, 'haarcascade_frontalface_default.xml')
@@ -423,33 +431,71 @@ class PerceptionDetector:
         events_to_emit = []
 
         if frame_np is not None and frame_np.size > 0:
-            gray = cv2.cvtColor(frame_np, cv2.COLOR_BGR2GRAY)
-            blurred = cv2.GaussianBlur(gray, (7, 7), 0)
-            _, thresh = cv2.threshold(blurred, 60, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-            contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if self.yolo_model is not None:
+                try:
+                    yolo_results = self.yolo_model(frame_np, conf=0.40, verbose=False)
+                    for r in yolo_results:
+                        boxes = r.boxes
+                        for box in boxes:
+                            cls_id = int(box.cls[0].item())
+                            cls_raw = r.names.get(cls_id, "unknown").upper()
+                            conf = float(box.conf[0].item())
+                            xyxy = box.xyxy[0].cpu().numpy().astype(int)
+                            x1, y1, x2, y2 = xyxy
+                            w = int(max(1, x2 - x1))
+                            h = int(max(1, y2 - y1))
+                            bbox = [int(x1), int(y1), w, h]
 
-            for cnt in sorted(contours, key=cv2.contourArea, reverse=True)[:10]:
-                x, y, w, h = cv2.boundingRect(cnt)
-                area = w * h
-                if area > (width * height * 0.015) and y > (height * 0.15):
-                    aspect = float(w) / h if h > 0 else 1.0
+                            prahari_class = cls_raw
+                            if cls_raw in ["CAR", "AUTOMOBILE"]: prahari_class = "CAR"
+                            elif cls_raw in ["MOTORCYCLE", "MOTORBIKE"]: prahari_class = "MOTORCYCLE"
+                            elif cls_raw in ["BUS"]: prahari_class = "BUS"
+                            elif cls_raw in ["TRUCK"]: prahari_class = "TRUCK"
+                            elif cls_raw in ["BICYCLE", "BIKE"]: prahari_class = "BICYCLE"
+                            elif cls_raw in ["PERSON"]: prahari_class = "PERSON"
 
-                    if aspect > 1.8 and area > (width * height * 0.08):
-                        v_class = "BUS" if aspect < 2.5 else "TRUCK"
-                    elif aspect < 0.8:
-                        v_class = "MOTORCYCLE"
-                    else:
-                        v_class = "CAR"
+                            if prahari_class in ["CAR", "BUS", "TRUCK"]:
+                                is_ambulance, amb_conf = self._detect_ambulance_visual(frame_np, bbox)
+                                if is_ambulance:
+                                    prahari_class = "AMBULANCE"
+                                    conf = max(conf, amb_conf)
 
-                    is_ambulance, amb_conf = self._detect_ambulance_visual(frame_np, [x, y, w, h])
-                    if is_ambulance:
-                        v_class = "AMBULANCE"
+                            raw_detections.append({
+                                "class": prahari_class,
+                                "confidence": round(conf, 2),
+                                "bbox": bbox
+                            })
+                except Exception as e:
+                    print(f"[PERCEPTION] YOLOv8 inference warning: {e}")
 
-                    raw_detections.append({
-                        "class": v_class,
-                        "confidence": amb_conf if is_ambulance else round(0.85 + (area % 10) * 0.01, 2),
-                        "bbox": [int(x), int(y), int(w), int(h)]
-                    })
+            if len(raw_detections) == 0:
+                gray = cv2.cvtColor(frame_np, cv2.COLOR_BGR2GRAY)
+                blurred = cv2.GaussianBlur(gray, (7, 7), 0)
+                _, thresh = cv2.threshold(blurred, 60, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+                for cnt in sorted(contours, key=cv2.contourArea, reverse=True)[:10]:
+                    x, y, w, h = cv2.boundingRect(cnt)
+                    area = w * h
+                    if area > (width * height * 0.015) and y > (height * 0.15):
+                        aspect = float(w) / h if h > 0 else 1.0
+
+                        if aspect > 1.8 and area > (width * height * 0.08):
+                            v_class = "BUS" if aspect < 2.5 else "TRUCK"
+                        elif aspect < 0.8:
+                            v_class = "MOTORCYCLE"
+                        else:
+                            v_class = "CAR"
+
+                        is_ambulance, amb_conf = self._detect_ambulance_visual(frame_np, [x, y, w, h])
+                        if is_ambulance:
+                            v_class = "AMBULANCE"
+
+                        raw_detections.append({
+                            "class": v_class,
+                            "confidence": amb_conf if is_ambulance else round(0.85 + (area % 10) * 0.01, 2),
+                            "bbox": [int(x), int(y), int(w), int(h)]
+                        })
 
             if len(raw_detections) == 0:
                 raw_detections.append({

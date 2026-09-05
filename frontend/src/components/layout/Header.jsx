@@ -89,7 +89,7 @@ export const Header = () => {
           >
             <Battery className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
             <span className="text-slate-900 font-bold">
-              {liveBattery.voltage != null ? `${liveBattery.voltage}V` : '35.8V'}
+              {liveBattery.voltage != null ? `${liveBattery.voltage}V` : '11.8V'}
             </span>
             <span className="text-slate-500 text-[10px] hidden sm:inline">
               ({liveBattery.percentage != null ? `${liveBattery.percentage}%` : '82%'})

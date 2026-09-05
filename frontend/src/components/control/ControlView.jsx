@@ -306,7 +306,7 @@ export const ControlView = () => {
           <div className="grid grid-cols-4 gap-2 text-center text-xs font-mono pt-1">
             <div className="p-2 rounded-xl bg-slate-50 border border-slate-200">
               <div className="text-[9px] text-slate-400 font-sans font-bold uppercase">BATTERY</div>
-              <div className="text-xs font-black text-emerald-700">{liveBattery.voltage || '35.8'}V</div>
+              <div className="text-xs font-black text-emerald-700">{liveBattery.voltage || '11.8'}V</div>
             </div>
             <div className="p-2 rounded-xl bg-slate-50 border border-slate-200">
               <div className="text-[9px] text-slate-400 font-sans font-bold uppercase">OBSTACLE</div>

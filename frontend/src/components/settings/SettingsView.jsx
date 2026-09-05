@@ -354,7 +354,7 @@ export const SettingsView = () => {
             className="p-3 rounded-xl bg-slate-50 hover:bg-emerald-50 active:bg-emerald-100 text-slate-800 border border-slate-200 transition cursor-pointer text-left space-y-1 min-h-[60px]"
           >
             <div className="font-bold text-emerald-700 text-xs">1. Normal Patrol</div>
-            <div className="text-[10px] text-slate-500">36V Batt, 2.5m Road</div>
+            <div className="text-[10px] text-slate-500">11.8V Batt, 2.5m Road</div>
           </button>
 
           <button
@@ -374,7 +374,7 @@ export const SettingsView = () => {
             className="p-3 rounded-xl bg-slate-50 hover:bg-amber-50 active:bg-amber-100 text-slate-800 border border-slate-200 transition cursor-pointer text-left space-y-1 min-h-[60px]"
           >
             <div className="font-bold text-amber-800 text-xs">3. Low Battery</div>
-            <div className="text-[10px] text-slate-500">Sag to 31.5V (15%)</div>
+            <div className="text-[10px] text-slate-500">Sag to 10.2V (15%)</div>
           </button>
 
           <button

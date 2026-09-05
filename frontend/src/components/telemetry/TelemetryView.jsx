@@ -42,7 +42,7 @@ export const TelemetryView = () => {
       {/* Header Stat Strip */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-1">
-          <div className="text-xs text-slate-500 font-semibold uppercase">36V Pack Voltage</div>
+          <div className="text-xs text-slate-500 font-semibold uppercase">11.5V Pack Voltage</div>
           <div className="text-xl font-black text-emerald-700 font-mono">
             {liveBattery.voltage != null ? `${liveBattery.voltage} V` : 'N/A'}
           </div>
@@ -85,10 +85,10 @@ export const TelemetryView = () => {
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div className="flex items-center gap-2 font-bold text-slate-900 text-sm">
               <Battery className="w-4 h-4 text-emerald-600" />
-              <span>36V BATTERY VOLTAGE & SAG — {selectedRobotId}</span>
+              <span>BATTERY VOLTAGE & SAG — {selectedRobotId}</span>
             </div>
             <StatusBadge
-              label={robotStatus === 'ONLINE' ? 'NOMINAL 36V' : 'NO LIVE DATA'}
+              label={robotStatus === 'ONLINE' ? 'NOMINAL 11.5V' : 'NO LIVE DATA'}
               variant={robotStatus === 'ONLINE' ? 'green' : 'slate'}
             />
           </div>
@@ -109,7 +109,7 @@ export const TelemetryView = () => {
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis dataKey="time" stroke="#94a3b8" tick={{ fontSize: 10 }} />
-                  <YAxis domain={[28, 44]} stroke="#94a3b8" tick={{ fontSize: 10 }} />
+                  <YAxis domain={[9, 14]} stroke="#94a3b8" tick={{ fontSize: 10 }} />
                   <Tooltip
                     contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '12px', color: '#0f172a' }}
                   />

@@ -120,7 +120,8 @@ export const RobotProvider = ({ children }) => {
     emergencyStopDistance: 0.35,
     obstacleWarningDistance: 0.80,
     maxMotorCurrent: 22.0,
-    criticalBatteryVoltage: 31.0,
+    criticalBatteryVoltage: 10.5,
+    lowBatteryVoltage: 10.5,
   });
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isEmergencyModalOpen, setIsEmergencyModalOpen] = useState(false);
@@ -818,6 +819,88 @@ export const RobotProvider = ({ children }) => {
     }
   }, [liveBattery]);
 
+  const updateSettings = useCallback(async (newSettings) => {
+    setSettings((prev) => ({ ...prev, ...newSettings }));
+    try {
+      if (api.updateSettings) {
+        await api.updateSettings(newSettings);
+      }
+    } catch (e) {
+      console.warn('Backend updateSettings failed or offline', e);
+    }
+  }, []);
+
+  const resetSettings = useCallback(async () => {
+    const defaultSettings = {
+      defaultSpeed: 60,
+      maxSpeed: 90,
+      emergencyStopDistance: 0.35,
+      obstacleWarningDistance: 0.80,
+      maxMotorCurrent: 22.0,
+      criticalBatteryVoltage: 10.5,
+      lowBatteryVoltage: 10.5,
+    };
+    setSettings(defaultSettings);
+    try {
+      if (api.updateSettings) {
+        await api.updateSettings(defaultSettings);
+      }
+    } catch (e) {
+      console.warn('Backend resetSettings failed or offline', e);
+    }
+  }, []);
+
+  const triggerScenario = useCallback((scenarioType) => {
+    const now = new Date().toISOString();
+    if (scenarioType === 'clear') {
+      setLiveBattery({
+        voltage: 11.8,
+        current: 0.8,
+        percentage: 95,
+        temperature: 32,
+        status: 'NOMINAL',
+        updatedAt: now,
+      });
+      setLiveUltrasonic({
+        frontDistanceCm: 142,
+        rearDistanceCm: 210,
+        frontDistanceM: 1.42,
+        rearDistanceM: 2.1,
+        status: 'CLEAR',
+        updatedAt: now,
+      });
+      setLiveMotors({
+        left: { current: 1.2, pwm: 0, speed: 0, status: 'IDLE' },
+        right: { current: 1.1, pwm: 0, speed: 0, status: 'IDLE' },
+        updatedAt: now,
+      });
+    } else if (scenarioType === 'obstacle_close') {
+      setLiveUltrasonic({
+        frontDistanceCm: 25,
+        rearDistanceCm: 180,
+        frontDistanceM: 0.25,
+        rearDistanceM: 1.8,
+        status: 'OBSTACLE_DETECTED',
+        updatedAt: now,
+      });
+    } else if (scenarioType === 'low_battery') {
+      setLiveBattery({
+        voltage: 10.2,
+        current: 1.4,
+        percentage: 15,
+        temperature: 36,
+        status: 'LOW_BATTERY',
+        updatedAt: now,
+      });
+    } else if (scenarioType === 'motor_stall') {
+      setLiveMotors({
+        left: { current: 26.5, pwm: 90, speed: 0, status: 'OVERCURRENT' },
+        right: { current: 27.2, pwm: 90, speed: 0, status: 'OVERCURRENT' },
+        updatedAt: now,
+      });
+    }
+  }, []);
+
   return (
     <RobotContext.Provider
       value={{
@@ -915,6 +998,9 @@ export const RobotProvider = ({ children }) => {
         isDebugModalOpen,
         setIsDebugModalOpen,
         settings,
+        updateSettings,
+        resetSettings,
+        triggerScenario,
         activeTab,
         setActiveTab,
         isEmergencyModalOpen,

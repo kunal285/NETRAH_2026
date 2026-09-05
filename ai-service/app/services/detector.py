@@ -524,42 +524,93 @@ class PerceptionDetector:
         }
 
         if frame_np is not None and frame_np.size > 0:
-            # 1. Vehicle Candidate Detection
-            gray = cv2.cvtColor(frame_np, cv2.COLOR_BGR2GRAY)
-            blurred = cv2.GaussianBlur(gray, (7, 7), 0)
-            _, thresh = cv2.threshold(blurred, 60, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-            contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            # 1. Primary YOLOv8 Multi-Class Inference
+            if self.yolo_model is not None:
+                try:
+                    yolo_results = self.yolo_model(frame_np, conf=settings.VEHICLE_CONFIDENCE_THRESHOLD, verbose=False)
+                    for r in yolo_results:
+                        boxes = r.boxes
+                        for box in boxes:
+                            cls_id = int(box.cls[0].item())
+                            cls_raw = r.names.get(cls_id, "unknown").upper()
+                            conf = float(box.conf[0].item())
+                            xyxy = box.xyxy[0].cpu().numpy().astype(int)
+                            x1, y1, x2, y2 = xyxy
+                            w = int(max(1, x2 - x1))
+                            h = int(max(1, y2 - y1))
+                            bbox = [int(x1), int(y1), w, h]
 
-            for cnt in sorted(contours, key=cv2.contourArea, reverse=True)[:10]:
-                x, y, w, h = cv2.boundingRect(cnt)
-                area = w * h
-                bbox = [int(x), int(y), int(w), int(h)]
+                            # ROI check
+                            if not self.is_inside_roi(bbox, width, height):
+                                continue
 
-                # ROI Filtering
-                if not self.is_inside_roi(bbox, width, height):
-                    continue
+                            # Normalize YOLO classes to PRAHARI ontology
+                            if cls_raw in ["CAR", "AUTOMOBILE"]:
+                                prahari_class = "CAR"
+                            elif cls_raw in ["MOTORCYCLE", "MOTORBIKE"]:
+                                prahari_class = "MOTORCYCLE"
+                            elif cls_raw in ["BUS"]:
+                                prahari_class = "BUS"
+                            elif cls_raw in ["TRUCK"]:
+                                prahari_class = "TRUCK"
+                            elif cls_raw in ["BICYCLE", "BIKE"]:
+                                prahari_class = "BICYCLE"
+                            elif cls_raw in ["PERSON"]:
+                                prahari_class = "PERSON"
+                            else:
+                                prahari_class = cls_raw
 
-                if area > (width * height * 0.015) and y > (height * 0.12):
-                    aspect = float(w) / h if h > 0 else 1.0
+                            if prahari_class in ["CAR", "BUS", "TRUCK"]:
+                                is_ambulance, amb_conf = self._detect_ambulance_visual(frame_np, bbox)
+                                if is_ambulance:
+                                    prahari_class = "AMBULANCE"
+                                    conf = max(conf, amb_conf)
 
-                    if aspect > 1.8 and area > (width * height * 0.08):
-                        v_class = "BUS" if aspect < 2.5 else "TRUCK"
-                    elif aspect < 0.8:
-                        v_class = "MOTORCYCLE"
-                    else:
-                        v_class = "CAR"
+                            raw_detections.append({
+                                "class": prahari_class,
+                                "confidence": round(conf, 2),
+                                "bbox": bbox
+                            })
+                except Exception as yolo_err:
+                    logger.warning(f"[PERCEPTION] YOLOv8 inference notice: {yolo_err}")
 
-                    is_ambulance, amb_conf = self._detect_ambulance_visual(frame_np, bbox)
-                    if is_ambulance:
-                        v_class = "AMBULANCE"
+            # 2. Fallback CV Pipeline (if no YOLO detections or model not initialized)
+            if len(raw_detections) == 0:
+                gray = cv2.cvtColor(frame_np, cv2.COLOR_BGR2GRAY)
+                blurred = cv2.GaussianBlur(gray, (7, 7), 0)
+                _, thresh = cv2.threshold(blurred, 60, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-                    conf = amb_conf if is_ambulance else round(0.85 + (area % 10) * 0.01, 2)
-                    if conf >= settings.VEHICLE_CONFIDENCE_THRESHOLD:
-                        raw_detections.append({
-                            "class": v_class,
-                            "confidence": conf,
-                            "bbox": bbox
-                        })
+                for cnt in sorted(contours, key=cv2.contourArea, reverse=True)[:10]:
+                    x, y, w, h = cv2.boundingRect(cnt)
+                    area = w * h
+                    bbox = [int(x), int(y), int(w), int(h)]
+
+                    # ROI Filtering
+                    if not self.is_inside_roi(bbox, width, height):
+                        continue
+
+                    if area > (width * height * 0.015) and y > (height * 0.12):
+                        aspect = float(w) / h if h > 0 else 1.0
+
+                        if aspect > 1.8 and area > (width * height * 0.08):
+                            v_class = "BUS" if aspect < 2.5 else "TRUCK"
+                        elif aspect < 0.8:
+                            v_class = "MOTORCYCLE"
+                        else:
+                            v_class = "CAR"
+
+                        is_ambulance, amb_conf = self._detect_ambulance_visual(frame_np, bbox)
+                        if is_ambulance:
+                            v_class = "AMBULANCE"
+
+                        conf = amb_conf if is_ambulance else round(0.85 + (area % 10) * 0.01, 2)
+                        if conf >= settings.VEHICLE_CONFIDENCE_THRESHOLD:
+                            raw_detections.append({
+                                "class": v_class,
+                                "confidence": conf,
+                                "bbox": bbox
+                            })
 
             if len(raw_detections) == 0:
                 raw_detections.append({

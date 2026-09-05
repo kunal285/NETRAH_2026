@@ -286,7 +286,7 @@ export class MockRobotAdapter extends EventEmitter {
         break;
 
       case 'low_battery':
-        this.state.battery.voltage = 31.5;
+        this.state.battery.voltage = 10.2;
         this.state.battery.percentage = 15;
         this.state.battery.status = 'LOW';
         this.emit('event', {
@@ -294,7 +294,7 @@ export class MockRobotAdapter extends EventEmitter {
           timestamp: new Date().toISOString(),
           level: 'warning',
           title: 'Battery Low Warning',
-          description: 'Pack voltage sagged to 31.5V (15%). Recommend charging.',
+          description: 'Pack voltage sagged to 10.2V (15%). Recommend charging.',
         });
         break;
 

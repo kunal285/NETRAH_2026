@@ -61,11 +61,11 @@ export const SensorsView = () => {
     {
       id: 'voltage-divider',
       name: 'Precision Resistor Voltage Divider',
-      channel: 'ADC1_CH6 (GPIO 34)',
-      status: liveBattery.voltage != null ? (liveBattery.voltage < 31 ? 'CRITICAL' : 'NORMAL') : 'OFFLINE',
+      channel: 'Analog Pin A0 (R1=30k, R2=7.5k)',
+      status: liveBattery.voltage != null ? (liveBattery.voltage < 10.5 ? 'CRITICAL' : 'NORMAL') : 'OFFLINE',
       value: liveBattery.voltage != null ? `${liveBattery.voltage} V (${liveBattery.percentage ?? 'N/A'}%)` : 'N/A',
       updatedAt: liveBattery.updatedAt,
-      desc: 'Scales 36V-42V Li-ion pack voltage down to 0-3.3V ESP32 ADC range',
+      desc: 'Scales 11.5V-12.6V Li-ion pack voltage down to 0-5.0V / 0-3.3V ADC range',
       type: 'Analog Voltage',
     },
     {

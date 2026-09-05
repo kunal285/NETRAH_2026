@@ -585,7 +585,7 @@ export const VisionView = () => {
                   OBSTACLE: <strong className="text-emerald-400">{liveUltrasonic.frontDistanceCm || 87}cm</strong>
                 </div>
                 <div className="bg-black/75 backdrop-blur-md px-2.5 py-1 rounded-lg border border-white/10">
-                  BATTERY: <strong className="text-emerald-400">{liveBattery.voltage || '35.8'}V</strong>
+                  BATTERY: <strong className="text-emerald-400">{liveBattery.voltage || '11.8'}V</strong>
                 </div>
               </div>
             )}
