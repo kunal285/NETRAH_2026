@@ -128,15 +128,20 @@ snapshotsRouter.get('/:id/image', async (req, res) => {
       return res.status(404).send('Snapshot not found');
     }
 
-    if (snap.signedUrl && snap.signedUrl.startsWith('http')) {
+    // Always prefer local buffer / database base64 stream to prevent raw S3 AccessDenied errors
+    const frameBuf = await cameraSnapshotService.getSnapshotBuffer(req.params.id, snap.robotId);
+    if (frameBuf && frameBuf.length > 0) {
+      res.setHeader('Content-Type', snap.mimeType || 'image/jpeg');
+      res.setHeader('Content-Length', frameBuf.length);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      return res.end(frameBuf);
+    }
+
+    if (snap.signedUrl && snap.signedUrl.startsWith('http') && snap.imageUploadStatus === 'UPLOADED') {
       return res.redirect(snap.signedUrl);
     }
 
-    const frameBuf = await cameraSnapshotService.getSnapshotBuffer(req.params.id, snap.robotId);
-    res.setHeader('Content-Type', snap.mimeType || 'image/jpeg');
-    res.setHeader('Content-Length', frameBuf.length);
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    res.end(frameBuf);
+    res.status(404).send('Snapshot image buffer empty');
   } catch (err) {
     res.status(500).send(`Image retrieval error: ${err.message}`);
   }
