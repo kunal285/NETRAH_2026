@@ -224,6 +224,56 @@ export const CameraManager = ({ onFrameCaptured, onCameraStateChange }) => {
         {/* Source Selection Buttons */}
         <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1.5 rounded-xl border border-slate-200">
           <button
+            id="btn-cam-rear"
+            onClick={() => {
+              setCameraSource('rear_mobile');
+              startCamera('rear_mobile');
+            }}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+              (cameraSource === 'rear_mobile' || cameraSource === 'mobile') && cameraActive
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+            }`}
+          >
+            <Smartphone className="w-3.5 h-3.5" />
+            <span>Phone Rear Camera (Primary)</span>
+          </button>
+
+          <button
+            id="btn-cam-front"
+            onClick={() => {
+              setCameraSource('front_mobile');
+              startCamera('front_mobile');
+            }}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+              cameraSource === 'front_mobile' && cameraActive
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+            }`}
+          >
+            <Smartphone className="w-3.5 h-3.5" />
+            <span>Phone Front Cam</span>
+          </button>
+
+          <button
+            id="btn-cam-robot"
+            onClick={() => {
+              setCameraSource('esp32');
+              stopCamera();
+              setCameraActive(true);
+              if (onCameraStateChange) onCameraStateChange(true, 'esp32', videoRef);
+            }}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+              (cameraSource === 'esp32' || cameraSource === 'robot') && cameraActive
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+            }`}
+          >
+            <Bot className="w-3.5 h-3.5" />
+            <span>ESP32-CAM (Option)</span>
+          </button>
+
+          <button
             id="btn-cam-webcam"
             onClick={() => {
               setCameraSource('webcam');
@@ -237,40 +287,6 @@ export const CameraManager = ({ onFrameCaptured, onCameraStateChange }) => {
           >
             <Camera className="w-3.5 h-3.5" />
             <span>Webcam / PC</span>
-          </button>
-
-          <button
-            id="btn-cam-rear"
-            onClick={() => {
-              setCameraSource('rear_mobile');
-              startCamera('rear_mobile');
-            }}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-              cameraSource === 'rear_mobile' && cameraActive
-                ? 'bg-emerald-600 text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-            }`}
-          >
-            <Smartphone className="w-3.5 h-3.5" />
-            <span>Phone Rear Camera</span>
-          </button>
-
-          <button
-            id="btn-cam-robot"
-            onClick={() => {
-              setCameraSource('robot');
-              stopCamera();
-              setCameraActive(true);
-              if (onCameraStateChange) onCameraStateChange(true, 'robot', videoRef);
-            }}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-              cameraSource === 'robot' && cameraActive
-                ? 'bg-emerald-600 text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-            }`}
-          >
-            <Bot className="w-3.5 h-3.5" />
-            <span>Robot Stream</span>
           </button>
 
           <label className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 transition flex items-center gap-1.5 cursor-pointer">

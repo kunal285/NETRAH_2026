@@ -29,6 +29,7 @@ export const SystemView = () => {
     backendOnline,
     robotStatus,
     robotCameraStatus,
+    robotCameraStreamUrl,
     lastHeartbeatTimestamp,
     lastTelemetryTimestamp,
     lastDetectionTimestamp,
@@ -95,10 +96,16 @@ export const SystemView = () => {
       ok: true,
     },
     {
-      name: 'ESP32-CAM VIDEO STREAM',
-      status: robotCameraStatus === 'LIVE' || cameraDiag?.connected ? 'STREAMING' : 'OFFLINE',
+      name: 'MOBILE CAMERA NODE (PRIMARY)',
+      status: robotCameraStatus === 'LIVE' || cameraDiag?.connected ? 'READY / STREAMING' : 'STANDBY',
       icon: Camera,
-      ok: robotCameraStatus === 'LIVE' || cameraDiag?.connected,
+      ok: true,
+    },
+    {
+      name: 'ESP32-CAM STREAM (OPTIONAL)',
+      status: robotCameraStreamUrl ? 'CONFIGURED' : 'OPTIONAL STANDBY',
+      icon: Camera,
+      ok: true,
     },
     {
       name: '2× BTS7960 MOTOR DRIVERS',

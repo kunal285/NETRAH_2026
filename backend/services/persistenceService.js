@@ -85,6 +85,50 @@ class PersistenceService {
     if (!this.enabled) return null;
     return SystemLog.create({ message, level, context, robotId: context.robotId || DEFAULT_ROBOT_ID });
   }
+
+  async getTelemetryHistory({ limit = 50, robotId = null } = {}) {
+    if (!this.enabled) return [];
+    try {
+      const query = robotId ? { robotId } : {};
+      return await Telemetry.find(query).sort({ timestamp: -1 }).limit(Number(limit)).lean();
+    } catch (err) {
+      console.warn('[PersistenceService] getTelemetryHistory error:', err.message);
+      return [];
+    }
+  }
+
+  async getSafetyEvents({ limit = 50, robotId = null } = {}) {
+    if (!this.enabled) return [];
+    try {
+      const query = robotId ? { robotId } : {};
+      return await SafetyEvent.find(query).sort({ timestamp: -1 }).limit(Number(limit)).lean();
+    } catch (err) {
+      console.warn('[PersistenceService] getSafetyEvents error:', err.message);
+      return [];
+    }
+  }
+
+  async getSystemLogs({ limit = 50, robotId = null } = {}) {
+    if (!this.enabled) return [];
+    try {
+      const query = robotId ? { robotId } : {};
+      return await SystemLog.find(query).sort({ createdAt: -1 }).limit(Number(limit)).lean();
+    } catch (err) {
+      console.warn('[PersistenceService] getSystemLogs error:', err.message);
+      return [];
+    }
+  }
+
+  async getRobotState(robotId = DEFAULT_ROBOT_ID) {
+    if (!this.enabled) return null;
+    try {
+      return await Robot.findOne({ robotId }).lean();
+    } catch (err) {
+      console.warn('[PersistenceService] getRobotState error:', err.message);
+      return null;
+    }
+  }
 }
 
 export const persistenceService = new PersistenceService();
+

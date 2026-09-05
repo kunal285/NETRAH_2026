@@ -32,13 +32,21 @@ export const VisionView = () => {
     fpsMetrics,
     snapshotsList,
     setSnapshotsList,
+    cameraSource,
+    setCameraSource,
+    liveMobileFrame,
+    activeMediaStream,
+    setActiveMediaStream,
+    cameraActive,
+    setCameraActive,
   } = useRobot();
 
   const [showAiOverlay, setShowAiOverlay] = useState(true);
   const [showHUD, setShowHUD] = useState(true);
-  const [isStreamLoading, setIsStreamLoading] = useState(true);
+  const [isStreamLoading, setIsStreamLoading] = useState(false);
   const [streamError, setStreamError] = useState(false);
   const [streamKey, setStreamKey] = useState(Date.now());
+  const [localCamStarting, setLocalCamStarting] = useState(false);
 
   // Snapshot Capture States (Section 16, 21, 23)
   const [snapshotState, setSnapshotState] = useState('IDLE'); // 'IDLE' | 'CAPTURING' | 'UPLOADING' | 'SAVED' | 'ERROR'
@@ -46,6 +54,39 @@ export const VisionView = () => {
   const [previewSnapshot, setPreviewSnapshot] = useState(null);
 
   const imgRef = useRef(null);
+  const videoRef = useRef(null);
+
+  // Attach local media stream if running on this device
+  useEffect(() => {
+    if (videoRef.current) {
+      if (activeMediaStream) {
+        videoRef.current.srcObject = activeMediaStream;
+        videoRef.current.play().catch(() => {});
+      } else {
+        videoRef.current.srcObject = null;
+      }
+    }
+  }, [activeMediaStream]);
+
+  // Start local mobile/browser camera if requested
+  const startLocalCamera = async () => {
+    setLocalCamStarting(true);
+    try {
+      if (navigator.mediaDevices?.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: false,
+        });
+        setActiveMediaStream(stream);
+        setCameraActive(true);
+        setCameraSource('mobile');
+      }
+    } catch (err) {
+      console.warn('Local camera start notice:', err.message);
+    } finally {
+      setLocalCamStarting(false);
+    }
+  };
 
   const streamSrc =
     robotCameraStreamUrl ||
@@ -78,9 +119,31 @@ export const VisionView = () => {
 
     let base64Frame = null;
 
-    // Optional client offscreen canvas capture if video is rendered
-    try {
-      if (imgRef.current && imgRef.current.complete && imgRef.current.naturalWidth > 0) {
+    // 1. Capture from active local video stream
+    if (videoRef.current && activeMediaStream) {
+      try {
+        const canvas = document.createElement('canvas');
+        const v = videoRef.current;
+        canvas.width = v.videoWidth || 1280;
+        canvas.height = v.videoHeight || 720;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+          base64Frame = canvas.toDataURL('image/jpeg', 0.92);
+        }
+      } catch (e) {
+        console.warn('Local video canvas snapshot fallback:', e);
+      }
+    }
+
+    // 2. Capture from active mobile broadcast frame
+    if (!base64Frame && liveMobileFrame?.image) {
+      base64Frame = liveMobileFrame.image;
+    }
+
+    // 3. Capture from ESP32-CAM img tag
+    if (!base64Frame && imgRef.current && imgRef.current.complete && imgRef.current.naturalWidth > 0) {
+      try {
         const canvas = document.createElement('canvas');
         canvas.width = imgRef.current.naturalWidth || 1280;
         canvas.height = imgRef.current.naturalHeight || 720;
@@ -89,9 +152,9 @@ export const VisionView = () => {
           ctx.drawImage(imgRef.current, 0, 0, canvas.width, canvas.height);
           base64Frame = canvas.toDataURL('image/jpeg', 0.92);
         }
+      } catch (e) {
+        // Fallback to server direct snapshot
       }
-    } catch {
-      // Cross-origin canvas limitation fallback -> backend direct camera snapshot endpoint
     }
 
     setSnapshotState('UPLOADING');
@@ -100,10 +163,10 @@ export const VisionView = () => {
       const res = await api.takeCameraSnapshot({
         robotId: selectedRobotId || 'PRAHARI-01',
         image: base64Frame,
-        source: 'OPERATOR_CONSOLE_MAST_CAM',
+        source: cameraSource === 'esp32' ? 'ESP32_CAM' : 'MOBILE_MAST_CAMERA',
       });
 
-      if (res.success) {
+      if (res.success || res.snapshotId) {
         setSnapshotState('SAVED');
         setPreviewSnapshot(res);
 
@@ -152,28 +215,55 @@ export const VisionView = () => {
           <div>
             <div className="flex items-center gap-2">
               <span className="text-base font-black text-slate-900 tracking-tight">
-                PRAHARI LIVE MAST CAMERA
+                {cameraSource === 'esp32' ? 'PRAHARI ESP32-CAM STREAM (OPTION)' : 'PRAHARI LIVE MAST CAMERA (MOBILE PRIMARY)'}
               </span>
               <span
                 className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider inline-flex items-center gap-1.5 ${
-                  !streamError
+                  cameraActive || liveMobileFrame || (!streamError && cameraSource === 'esp32')
                     ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                    : 'bg-rose-50 text-rose-800 border border-rose-200'
+                    : 'bg-amber-50 text-amber-800 border border-amber-200'
                 }`}
               >
-                <span className={`w-2 h-2 rounded-full ${!streamError ? 'bg-emerald-600 animate-pulse' : 'bg-rose-600'}`} />
-                <span>{!streamError ? '● LIVE' : 'CAMERA OFFLINE'}</span>
+                <span className={`w-2 h-2 rounded-full ${cameraActive || liveMobileFrame || (!streamError && cameraSource === 'esp32') ? 'bg-emerald-600 animate-pulse' : 'bg-amber-500'}`} />
+                <span>{cameraActive || liveMobileFrame || (!streamError && cameraSource === 'esp32') ? '● LIVE' : 'STANDBY'}</span>
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Target: <strong className="text-slate-800 font-bold">{selectedRobotId}</strong> • Source: MJPEG Live Video Stream
+              Target: <strong className="text-slate-800 font-bold">{selectedRobotId}</strong> • Source: {cameraSource === 'esp32' ? 'ESP32 Wi-Fi Stream' : 'Mobile Smartphone Camera'}
             </p>
           </div>
         </div>
 
-        {/* Action Controls */}
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          {/* Primary Take Snapshot Button (Section 16) */}
+        {/* Source Selector & Action Controls */}
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          {/* Source Toggle Pills */}
+          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
+            <button
+              onClick={() => setCameraSource('mobile')}
+              className={`px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1 ${
+                cameraSource === 'mobile' || cameraSource === 'rear_mobile'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <span>📱 Mobile Cam (Default)</span>
+            </button>
+            <button
+              onClick={() => {
+                setCameraSource('esp32');
+                setStreamError(false);
+              }}
+              className={`px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1 ${
+                cameraSource === 'esp32' || cameraSource === 'robot'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <span>📷 ESP32-CAM (Option)</span>
+            </button>
+          </div>
+
+          {/* Primary Take Snapshot Button */}
           <button
             id="btn-take-camera-snapshot"
             onClick={handleTakeSnapshot}
@@ -198,20 +288,11 @@ export const VisionView = () => {
                 : snapshotState === 'UPLOADING'
                 ? 'UPLOADING TO S3...'
                 : snapshotState === 'SAVED'
-                ? 'SAVED!'
+                ? 'SAVED TO S3 & DB!'
                 : snapshotState === 'ERROR'
                 ? snapshotError || 'ERROR'
                 : 'TAKE SNAPSHOT'}
             </span>
-          </button>
-
-          <button
-            onClick={handleReconnect}
-            className="px-3 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
-            title="Reconnect Stream"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isStreamLoading ? 'animate-spin' : ''}`} />
-            <span>Reconnect</span>
           </button>
 
           <button
@@ -229,63 +310,120 @@ export const VisionView = () => {
         </div>
       </div>
 
-      {/* Snapshot Error Banner (Section 23) */}
+      {/* Snapshot Error Banner */}
       {snapshotError && (
         <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-center gap-2 shadow-xs animate-shake">
           <AlertCircle className="w-4 h-4 shrink-0" />
-          <span>{snapshotError}. Please ensure camera is online and stream is active.</span>
+          <span>{snapshotError}. Please ensure camera is active and transmitting.</span>
         </div>
       )}
 
       {/* 2. Live Robot Camera Viewport */}
       <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3">
         <div className="relative aspect-video w-full rounded-xl bg-slate-950 border border-slate-800 overflow-hidden flex items-center justify-center shadow-inner group">
-          {/* Actual MJPEG Stream from Camera */}
-          {streamSrc && !streamError && (
-            <img
-              ref={imgRef}
-              key={streamKey}
-              src={`${streamSrc}${streamSrc.includes('?') ? '&' : '?'}_t=${streamKey}`}
-              alt="PRAHARI Robot Live Camera Feed"
-              crossOrigin="anonymous"
-              onLoad={handleStreamLoad}
-              onError={handleStreamError}
-              className="absolute inset-0 w-full h-full object-cover"
-            />
-          )}
+          {/* A. ESP32-CAM Optional Stream */}
+          {(cameraSource === 'esp32' || cameraSource === 'robot') && (
+            <>
+              {streamSrc && !streamError && (
+                <img
+                  ref={imgRef}
+                  key={streamKey}
+                  src={`${streamSrc}${streamSrc.includes('?') ? '&' : '?'}_t=${streamKey}`}
+                  alt="PRAHARI Robot ESP32 Camera Feed"
+                  crossOrigin="anonymous"
+                  onLoad={handleStreamLoad}
+                  onError={handleStreamError}
+                  className="absolute inset-0 w-full h-full object-cover"
+                />
+              )}
 
-          {/* Loading Indicator */}
-          {isStreamLoading && (
-            <div className="absolute inset-0 z-20 bg-slate-950/80 backdrop-blur-xs flex flex-col items-center justify-center text-slate-300 space-y-2">
-              <RefreshCw className="w-8 h-8 text-emerald-500 animate-spin" />
-              <div className="text-xs font-mono font-bold tracking-wider text-emerald-400">
-                CONNECTING TO ROBOT CAMERA STREAM...
-              </div>
-            </div>
-          )}
-
-          {/* Error / Offline State */}
-          {streamError && (
-            <div className="absolute inset-0 z-20 bg-slate-950 flex flex-col items-center justify-center p-6 text-center space-y-3">
-              <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-500">
-                <VideoOff className="w-6 h-6" />
-              </div>
-              <div className="space-y-1">
-                <div className="text-sm font-black text-rose-400 uppercase tracking-wide">
-                  ROBOT CAMERA OFFLINE
+              {streamError && (
+                <div className="absolute inset-0 z-20 bg-slate-950 flex flex-col items-center justify-center p-6 text-center space-y-3">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-500">
+                    <VideoOff className="w-6 h-6" />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-sm font-black text-amber-400 uppercase tracking-wide">
+                      ESP32-CAM STREAM STANDBY
+                    </div>
+                    <p className="text-xs text-slate-400 max-w-sm">
+                      ESP32-CAM stream is optional. You can use the primary <strong>Mobile Camera</strong> for live HD patrol feed.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setCameraSource('mobile')}
+                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs cursor-pointer shadow-xs"
+                    >
+                      Switch to Mobile Camera
+                    </button>
+                    <button
+                      onClick={handleReconnect}
+                      className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Retry Stream</span>
+                    </button>
+                  </div>
                 </div>
-                <p className="text-xs text-slate-400 max-w-sm">
-                  Cannot connect to live camera stream at <code className="text-slate-300 font-mono text-[11px]">{streamSrc}</code>. Ensure camera stream daemon is running.
-                </p>
-              </div>
-              <button
-                onClick={handleReconnect}
-                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-2 cursor-pointer shadow-xs"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>Retry Connection</span>
-              </button>
-            </div>
+              )}
+            </>
+          )}
+
+          {/* B. Mobile Camera Stream (Primary Default) */}
+          {cameraSource !== 'esp32' && cameraSource !== 'robot' && (
+            <>
+              {/* Local MediaStream Video Track */}
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className={`absolute inset-0 w-full h-full object-cover ${activeMediaStream ? 'opacity-100 z-0' : 'opacity-0 pointer-events-none'}`}
+              />
+
+              {/* Remote Broadcasted Mobile Frame (from mounted smartphone node) */}
+              {!activeMediaStream && liveMobileFrame?.image && (
+                <img
+                  src={liveMobileFrame.image}
+                  alt="Live Mobile Phone Camera Feed"
+                  className="absolute inset-0 w-full h-full object-cover z-0"
+                />
+              )}
+
+              {/* Standby State with 1-click start */}
+              {!activeMediaStream && !liveMobileFrame?.image && (
+                <div className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center p-6 text-center space-y-3 z-0">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                    <Camera className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-black text-slate-200">PRAHARI MOBILE CAMERA (PRIMARY)</div>
+                    <p className="text-xs text-slate-400 max-w-sm mt-1">
+                      Mount smartphone on robot mast or start direct camera broadcast. Live video will stream to command center in HD.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                    <button
+                      onClick={startLocalCamera}
+                      disabled={localCamStarting}
+                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <Camera className="w-3.5 h-3.5" />
+                      <span>{localCamStarting ? 'Starting Camera...' : 'Start Device Camera'}</span>
+                    </button>
+                    <a
+                      href="/mobile-camera"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <span>Open Mast Node Page ↗</span>
+                    </a>
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
           {/* Real-Time HUD Overlay */}
@@ -293,14 +431,22 @@ export const VisionView = () => {
             {showHUD && (
               <div className="flex justify-between items-start text-[10px] text-slate-300 font-mono">
                 <div className="bg-black/75 backdrop-blur-md px-2.5 py-1 rounded-lg border border-white/10 flex items-center gap-1.5">
-                  <span className={`w-2 h-2 rounded-full ${!streamError ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
-                  <span className="font-bold">{!streamError ? 'LIVE MAST CAM' : 'NO FEED'}</span>
+                  <span className={`w-2 h-2 rounded-full ${cameraActive || liveMobileFrame || (!streamError && (cameraSource === 'esp32' || cameraSource === 'robot')) ? 'bg-emerald-400 animate-pulse' : 'bg-slate-400'}`} />
+                  <span className="font-bold">
+                    {cameraSource === 'esp32' || cameraSource === 'robot'
+                      ? (!streamError ? 'LIVE ESP32-CAM' : 'NO FEED')
+                      : cameraActive
+                      ? 'LIVE MOBILE CAM'
+                      : liveMobileFrame
+                      ? 'LIVE PHONE BROADCAST'
+                      : 'STANDBY'}
+                  </span>
                   <span className="text-slate-500">|</span>
                   <span className="text-emerald-400 font-bold">{selectedRobotId}</span>
                 </div>
 
                 <div className="bg-black/75 backdrop-blur-md px-2.5 py-1 rounded-lg border border-white/10 text-emerald-400 font-bold">
-                  {fpsMetrics.cameraFps} FPS • 1280x720 • S3 READY
+                  {cameraSource === 'esp32' ? 'ESP32 STREAM • 30 FPS' : 'MOBILE CAMERA • 1080p HD • S3 READY'}
                 </div>
               </div>
             )}

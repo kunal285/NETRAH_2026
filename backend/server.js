@@ -180,9 +180,20 @@ async function startServer() {
         resolution: '1920x1080',
       });
 
-      // Frame ingestion from video stream / AI agent
+      // Frame ingestion from mobile video stream / camera node / AI agent
       socket.on('camera:frame', async (data) => {
         try {
+          if (data && data.image) {
+            // Broadcast the live mobile frame to command center dashboards
+            socket.broadcast.emit('camera:live_stream', {
+              image: data.image,
+              source: data.source || 'MOBILE_MOUNTED_CAMERA',
+              cameraId: data.cameraId || data.camera_id || 'MOBILE_PHONE_CAM_01',
+              robotId: data.robotId || 'PRAHARI-01',
+              timestamp: data.timestamp || new Date().toISOString(),
+            });
+          }
+
           const result = await inferenceService.processFrame(data, io);
           socket.emit('ai:frame_result', result);
         } catch (err) {

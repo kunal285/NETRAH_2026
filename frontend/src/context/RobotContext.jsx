@@ -202,7 +202,8 @@ export const RobotProvider = ({ children }) => {
   });
   const [activeMediaStream, setActiveMediaStream] = useState(null);
   const [cameraActive, setCameraActive] = useState(false);
-  const [cameraSource, setCameraSource] = useState('robot');
+  const [cameraSource, setCameraSource] = useState('mobile'); // 'mobile' (Primary) | 'esp32' | 'webcam' | 'video_file'
+  const [liveMobileFrame, setLiveMobileFrame] = useState(null);
   const [isLiveAiMode, setIsLiveAiMode] = useState(true);
 
   // Calculate Data Freshness Helper
@@ -533,6 +534,12 @@ export const RobotProvider = ({ children }) => {
     socket.on('device:heartbeat', handleHeartbeat);
 
     socket.on('camera:status', handleCameraStatus);
+    socket.on('camera:live_stream', (streamData) => {
+      if (streamData && streamData.image) {
+        setLiveMobileFrame(streamData);
+        setRobotCameraStatus('LIVE');
+      }
+    });
     socket.on('detection:new', handleDetectionNew);
     socket.on('ai:detection', handleDetectionNew);
     socket.on('robot:detection', handleDetectionNew);
@@ -578,6 +585,7 @@ export const RobotProvider = ({ children }) => {
       socket.off('device:telemetry', handleTelemetry);
       socket.off('device:heartbeat', handleHeartbeat);
       socket.off('camera:status', handleCameraStatus);
+      socket.off('camera:live_stream');
       socket.off('detection:new', handleDetectionNew);
       socket.off('ai:detection', handleDetectionNew);
       socket.off('robot:detection', handleDetectionNew);
@@ -888,6 +896,8 @@ export const RobotProvider = ({ children }) => {
         setCameraActive,
         cameraSource,
         setCameraSource,
+        liveMobileFrame,
+        setLiveMobileFrame,
         isLiveAiMode,
         setIsLiveAiMode,
         audioSirenState,

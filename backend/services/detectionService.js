@@ -229,13 +229,14 @@ class DetectionService {
     if (db.getStatus().connected) {
       try {
         await Detection.create({
-          _id: id,
+          detectionId: id,
           robotId,
           type: type.toLowerCase(),
           vehicleClass,
           trackId,
           result: detectionInfo,
           confidence,
+          cameraId: rawDetection.cameraId || 'MOBILE_PHONE_CAM_01',
           cameraSource: source,
           timestamp: new Date(timestamp),
           imageKey,

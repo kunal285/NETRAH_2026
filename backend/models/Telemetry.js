@@ -14,10 +14,10 @@ const TelemetrySchema = new mongoose.Schema(
       index: true,
     },
     battery: {
-      voltage: { type: Number, required: true },
-      current: { type: Number, required: true },
-      percentage: { type: Number, required: true },
-      powerWatts: { type: Number },
+      voltage: { type: Number, default: null },
+      current: { type: Number, default: null },
+      percentage: { type: Number, default: null },
+      powerWatts: { type: Number, default: null },
       stateOfCharge: { type: String, default: 'DISCHARGING' },
     },
     motors: {

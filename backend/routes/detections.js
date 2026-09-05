@@ -29,6 +29,19 @@ detectionRouter.get('/', async (req, res, next) => {
 });
 
 /**
+ * GET /api/detections/log
+ * Query perception detections log alias
+ */
+detectionRouter.get('/log', async (req, res, next) => {
+  try {
+    const result = await detectionService.getDetections(req.query);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
  * GET /api/detections/:id
  * Retrieve single detection record
  */

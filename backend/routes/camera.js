@@ -3,12 +3,15 @@ import express from 'express';
 export const cameraRouter = express.Router();
 
 cameraRouter.get('/', (_req, res) => {
-  const robotStreamUrl = process.env.ROBOT_CAMERA_STREAM_URL || null;
+  const esp32StreamUrl = process.env.ROBOT_CAMERA_STREAM_URL || process.env.ESP32_CAM_STREAM_URL || null;
   res.json({
+    primary: 'mobile',
     sources: {
-      device: { available: true, permissionRequired: true },
-      robot: { available: Boolean(robotStreamUrl), status: robotStreamUrl ? 'ROBOT CAMERA ONLINE' : 'ROBOT CAMERA OFFLINE', streamUrl: robotStreamUrl },
-      demo: { available: true, status: 'DEMO CAMERA' },
+      mobile: { available: true, primary: true, label: 'Mobile Camera (Primary)', permissionRequired: true },
+      esp32: { available: Boolean(esp32StreamUrl), primary: false, label: 'ESP32-CAM Stream (Optional)', status: esp32StreamUrl ? 'ONLINE' : 'STANDBY', streamUrl: esp32StreamUrl },
+      robot: { available: Boolean(esp32StreamUrl), primary: false, label: 'ESP32-CAM Stream (Optional)', status: esp32StreamUrl ? 'ONLINE' : 'STANDBY', streamUrl: esp32StreamUrl },
+      device: { available: true, label: 'Webcam / Browser Camera', permissionRequired: true },
+      demo: { available: true, label: 'Demo Simulation Stream', status: 'DEMO CAMERA' },
     },
   });
 });
