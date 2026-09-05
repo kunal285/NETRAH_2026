@@ -206,6 +206,94 @@ export const RobotProvider = ({ children }) => {
   const [cameraSource, setCameraSource] = useState('mobile'); // 'mobile' (Primary) | 'esp32' | 'webcam' | 'video_file'
   const [liveMobileFrame, setLiveMobileFrame] = useState(null);
   const [isLiveAiMode, setIsLiveAiMode] = useState(true);
+  const [activeFacingMode, setActiveFacingMode] = useState('user'); // 'user' (laptop/front) | 'environment' (rear/mobile mast)
+  const [cameraError, setCameraError] = useState('');
+  const [localCamStarting, setLocalCamStarting] = useState(false);
+
+  // Multi-tier robust camera initiator for Laptop Webcams and Mobile Phone Cameras
+  const startLocalCamera = useCallback(async (targetFacing = 'user') => {
+    setLocalCamStarting(true);
+    setCameraError('');
+    try {
+      if (typeof window === 'undefined' || !navigator?.mediaDevices?.getUserMedia) {
+        throw new Error('Camera access (getUserMedia) is not available. Please ensure you are running on localhost or an HTTPS connection.');
+      }
+
+      let stream = null;
+
+      // Tier 1: Try with requested facing mode & 720p HD resolution
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: targetFacing },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+          audio: false,
+        });
+      } catch (e1) {
+        console.warn('[Camera] Tier 1 constraint failed, trying unconstrained HD:', e1.message);
+        // Tier 2: Try without facingMode constraint (standard for laptop webcams / USB cameras)
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+            audio: false,
+          });
+        } catch (e2) {
+          console.warn('[Camera] Tier 2 constraint failed, trying basic video:', e2.message);
+          // Tier 3: Universal fallback: basic video stream
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false,
+          });
+        }
+      }
+
+      if (stream) {
+        setActiveMediaStream((prevStream) => {
+          if (prevStream) {
+            prevStream.getTracks().forEach((t) => t.stop());
+          }
+          return stream;
+        });
+        setCameraActive(true);
+        setRobotCameraStatus('LIVE');
+        setActiveFacingMode(targetFacing);
+        setCameraSource('mobile');
+        return stream;
+      }
+    } catch (err) {
+      console.error('[Camera] Initialization error:', err);
+      let msg = `Unable to connect to camera: ${err.message}`;
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        msg = 'Camera permission was denied. Please click the camera/lock icon in your browser address bar and choose "Allow".';
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        msg = 'No camera device found on this laptop or mobile phone.';
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        msg = 'Camera is already in use by another app (e.g. Zoom, Teams, or another browser window).';
+      }
+      setCameraError(msg);
+      return null;
+    } finally {
+      setLocalCamStarting(false);
+    }
+  }, []);
+
+  const stopLocalCamera = useCallback(() => {
+    setActiveMediaStream((prevStream) => {
+      if (prevStream) {
+        prevStream.getTracks().forEach((t) => t.stop());
+      }
+      return null;
+    });
+    setCameraActive(false);
+    setRobotCameraStatus('OFFLINE');
+  }, []);
+
+  const flipCamera = useCallback(() => {
+    const nextMode = activeFacingMode === 'user' ? 'environment' : 'user';
+    return startLocalCamera(nextMode);
+  }, [activeFacingMode, startLocalCamera]);
 
   // Calculate Data Freshness Helper
   const formatFreshness = useCallback((timestamp, staleThresholdSeconds = 3.0) => {
@@ -983,6 +1071,12 @@ export const RobotProvider = ({ children }) => {
         setLiveMobileFrame,
         isLiveAiMode,
         setIsLiveAiMode,
+        activeFacingMode,
+        cameraError,
+        localCamStarting,
+        startLocalCamera,
+        stopLocalCamera,
+        flipCamera,
         audioSirenState,
         fpsMetrics,
         setFpsMetrics,

@@ -57,12 +57,17 @@ export const DashboardView = () => {
     setActiveMediaStream,
     cameraActive,
     setCameraActive,
+    activeFacingMode,
+    cameraError,
+    localCamStarting,
+    startLocalCamera,
+    stopLocalCamera,
+    flipCamera,
   } = useRobot();
 
   const [showAiOverlay, setShowAiOverlay] = useState(true);
   const [streamError, setStreamError] = useState(false);
   const [streamKey, setStreamKey] = useState(Date.now());
-  const [localCamStarting, setLocalCamStarting] = useState(false);
   const isEstop = Boolean(emergencyStop);
 
   const localVideoRef = React.useRef(null);
@@ -78,26 +83,6 @@ export const DashboardView = () => {
       }
     }
   }, [activeMediaStream]);
-
-  // Start local mobile/browser camera if requested
-  const startLocalCamera = async () => {
-    setLocalCamStarting(true);
-    try {
-      if (navigator.mediaDevices?.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
-          audio: false,
-        });
-        setActiveMediaStream(stream);
-        setCameraActive(true);
-        setCameraSource('mobile');
-      }
-    } catch (err) {
-      console.warn('Local camera start notice:', err.message);
-    } finally {
-      setLocalCamStarting(false);
-    }
-  };
 
   const streamSrc =
     robotCameraStreamUrl ||
@@ -219,7 +204,7 @@ export const DashboardView = () => {
           <div className="flex items-center gap-2">
             <Camera className="w-4 h-4 text-emerald-600" />
             <span className="text-xs font-extrabold text-slate-900 uppercase">
-              {cameraSource === 'esp32' ? 'ESP32-CAM STREAM (OPTION)' : 'PRIMARY ROBOT CAMERA (MOBILE CAMERA)'}
+              {cameraSource === 'esp32' ? 'ESP32-CAM STREAM (OPTION)' : 'PRIMARY ROBOT CAMERA (MOBILE / LAPTOP)'}
             </span>
           </div>
 
@@ -234,7 +219,7 @@ export const DashboardView = () => {
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <span>📱 Mobile Cam (Default)</span>
+                <span>📱 Device / Mobile Cam</span>
               </button>
               <button
                 onClick={() => {
@@ -247,9 +232,29 @@ export const DashboardView = () => {
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <span>📷 ESP32-CAM (Option)</span>
+                <span>📷 ESP32-CAM</span>
               </button>
             </div>
+
+            {cameraActive && (
+              <>
+                <button
+                  onClick={flipCamera}
+                  title="Flip front/laptop vs rear/mobile camera"
+                  className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition cursor-pointer flex items-center gap-1"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  <span>Flip ({activeFacingMode === 'user' ? 'Front' : 'Rear'})</span>
+                </button>
+                <button
+                  onClick={stopLocalCamera}
+                  className="px-2 py-1 rounded-lg text-[10px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition cursor-pointer flex items-center gap-1"
+                >
+                  <VideoOff className="w-3 h-3" />
+                  <span>Stop</span>
+                </button>
+              </>
+            )}
 
             <button
               onClick={() => setShowAiOverlay(!showAiOverlay)}
@@ -268,6 +273,22 @@ export const DashboardView = () => {
             </button>
           </div>
         </div>
+
+        {/* Camera Error / Permission Banner */}
+        {cameraError && (
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs font-semibold flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>{cameraError}</span>
+            </div>
+            <button
+              onClick={() => startLocalCamera('user')}
+              className="px-2.5 py-1 rounded-lg bg-amber-600 text-white text-[11px] font-bold hover:bg-amber-700 cursor-pointer shrink-0"
+            >
+              Retry Laptop Cam
+            </button>
+          </div>
+        )}
 
         <div className="relative aspect-video w-full rounded-xl bg-slate-950 overflow-hidden border border-slate-800 shadow-inner flex items-center justify-center">
           {/* A. ESP32-CAM Option Stream */}
@@ -288,14 +309,14 @@ export const DashboardView = () => {
                   <VideoOff className="w-8 h-8 text-amber-500" />
                   <div className="text-xs font-bold text-amber-400">📷 ESP32-CAM STREAM STANDBY / DISCONNECTED</div>
                   <p className="text-[11px] text-slate-400 max-w-sm">
-                    ESP32-CAM is an optional secondary stream. Switch to <strong>Mobile Camera</strong> for high-res primary patrol feed or retry connection.
+                    ESP32-CAM is an optional secondary stream. Switch to <strong>Mobile / Laptop Camera</strong> for high-res primary patrol feed or retry connection.
                   </p>
                   <div className="flex items-center gap-2 pt-1">
                     <button
                       onClick={() => setCameraSource('mobile')}
                       className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs cursor-pointer"
                     >
-                      Switch to Mobile Camera
+                      Switch to Device Camera
                     </button>
                     <button
                       onClick={() => {
@@ -313,7 +334,7 @@ export const DashboardView = () => {
             </>
           )}
 
-          {/* B. Mobile Camera Stream (Primary Default) */}
+          {/* B. Mobile / Laptop Camera Stream (Primary Default) */}
           {cameraSource !== 'esp32' && cameraSource !== 'robot' && (
             <>
               {/* Local MediaStream Video Track */}
@@ -341,28 +362,33 @@ export const DashboardView = () => {
                     <Camera className="w-6 h-6" />
                   </div>
                   <div>
-                    <div className="text-sm font-black text-slate-200">PRAHARI MOBILE CAMERA (PRIMARY)</div>
+                    <div className="text-sm font-black text-slate-200">PRAHARI CAMERA FEED (OFFLINE / STANDBY)</div>
                     <p className="text-xs text-slate-400 max-w-sm mt-1">
-                      Mount smartphone on robot mast or start direct camera broadcast. Live video will stream to command center in HD.
+                      Connect your laptop webcam, robot mast camera, or smartphone to stream live video directly to the command center.
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
                     <button
-                      onClick={startLocalCamera}
+                      onClick={() => startLocalCamera('user')}
                       disabled={localCamStarting}
-                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
+                      className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
                     >
                       <Camera className="w-3.5 h-3.5" />
-                      <span>{localCamStarting ? 'Starting Camera...' : 'Start Device Camera'}</span>
+                      <span>{localCamStarting ? 'Connecting...' : '💻 Connect Laptop Webcam'}</span>
                     </button>
-                    <a
-                      href="/mobile-camera"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+                    <button
+                      onClick={() => startLocalCamera('environment')}
+                      disabled={localCamStarting}
+                      className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1.5 cursor-pointer"
                     >
-                      <span>Open Mast Node Page ↗</span>
-                    </a>
+                      <span>📱 Connect Mobile / Rear Cam</span>
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('vision')}
+                      className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 font-bold text-xs flex items-center gap-1.5 cursor-pointer border border-slate-700"
+                    >
+                      <span>Vision Suite ↗</span>
+                    </button>
                   </div>
                 </div>
               )}

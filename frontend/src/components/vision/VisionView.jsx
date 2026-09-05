@@ -1,8 +1,7 @@
-"use client";
-
 import React, { useState, useEffect, useRef } from 'react';
 import { useRobot } from '../../context/RobotContext';
 import { api } from '../../lib/api.js';
+import { socketClient } from '../../lib/socket.js';
 import {
   Camera,
   Maximize2,
@@ -18,6 +17,10 @@ import {
   X,
   FileImage,
   Cloud,
+  SwitchCamera,
+  Smartphone,
+  Laptop,
+  Radio,
 } from 'lucide-react';
 import { LiveAiOverlay } from './LiveAiOverlay.jsx';
 
@@ -39,6 +42,12 @@ export const VisionView = () => {
     setActiveMediaStream,
     cameraActive,
     setCameraActive,
+    activeFacingMode,
+    cameraError,
+    localCamStarting,
+    startLocalCamera,
+    stopLocalCamera,
+    flipCamera,
   } = useRobot();
 
   const [showAiOverlay, setShowAiOverlay] = useState(true);
@@ -46,7 +55,6 @@ export const VisionView = () => {
   const [isStreamLoading, setIsStreamLoading] = useState(false);
   const [streamError, setStreamError] = useState(false);
   const [streamKey, setStreamKey] = useState(Date.now());
-  const [localCamStarting, setLocalCamStarting] = useState(false);
 
   // Snapshot Capture States (Section 16, 21, 23)
   const [snapshotState, setSnapshotState] = useState('IDLE'); // 'IDLE' | 'CAPTURING' | 'UPLOADING' | 'SAVED' | 'ERROR'
@@ -55,6 +63,7 @@ export const VisionView = () => {
 
   const imgRef = useRef(null);
   const videoRef = useRef(null);
+  const streamIntervalRef = useRef(null);
 
   // Attach local media stream if running on this device
   useEffect(() => {
@@ -68,25 +77,47 @@ export const VisionView = () => {
     }
   }, [activeMediaStream]);
 
-  // Start local mobile/browser camera if requested
-  const startLocalCamera = async () => {
-    setLocalCamStarting(true);
-    try {
-      if (navigator.mediaDevices?.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
-          audio: false,
-        });
-        setActiveMediaStream(stream);
-        setCameraActive(true);
-        setCameraSource('mobile');
+  // Broadcast active local video frames over Socket.IO for AI perception processing
+  useEffect(() => {
+    if (!cameraActive || !activeMediaStream) {
+      if (streamIntervalRef.current) {
+        clearInterval(streamIntervalRef.current);
+        streamIntervalRef.current = null;
       }
-    } catch (err) {
-      console.warn('Local camera start notice:', err.message);
-    } finally {
-      setLocalCamStarting(false);
+      return;
     }
-  };
+
+    const canvas = document.createElement('canvas');
+    streamIntervalRef.current = setInterval(() => {
+      const v = videoRef.current;
+      if (!v || v.readyState < 2 || v.paused) return;
+
+      canvas.width = Math.min(v.videoWidth || 640, 1280);
+      canvas.height = Math.round((canvas.width * (v.videoHeight || 480)) / (v.videoWidth || 640));
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+      const b64 = canvas.toDataURL('image/jpeg', 0.8);
+
+      const socket = socketClient.getSocket();
+      if (socket && socket.connected) {
+        socket.emit('camera:frame', {
+          image: b64,
+          timestamp: new Date().toISOString(),
+          cameraId: 'BROWSER_DEVICE_CAM',
+          robotId: selectedRobotId || 'PRAHARI-01',
+          source: 'BROWSER_ACTIVE_CAM',
+        });
+      }
+    }, 150); // ~6.6 FPS AI Ingestion
+
+    return () => {
+      if (streamIntervalRef.current) {
+        clearInterval(streamIntervalRef.current);
+        streamIntervalRef.current = null;
+      }
+    };
+  }, [cameraActive, activeMediaStream, selectedRobotId]);
 
   const streamSrc =
     robotCameraStreamUrl ||
@@ -353,14 +384,18 @@ export const VisionView = () => {
           {/* Source Toggle Pills */}
           <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
             <button
-              onClick={() => setCameraSource('mobile')}
+              onClick={() => {
+                setCameraSource('mobile');
+                setStreamError(false);
+              }}
               className={`px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1 ${
                 cameraSource === 'mobile' || cameraSource === 'rear_mobile'
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <span>📱 Mobile Cam (Default)</span>
+              <Smartphone className="w-3.5 h-3.5" />
+              <span>Mobile / Laptop Cam</span>
             </button>
             <button
               onClick={() => {
@@ -373,20 +408,41 @@ export const VisionView = () => {
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <span>📷 ESP32-CAM (Option)</span>
+              <Radio className="w-3.5 h-3.5" />
+              <span>ESP32-CAM Stream</span>
             </button>
           </div>
 
-          {/* Quick Start Camera if not active */}
-          {!cameraActive && !activeMediaStream && cameraSource !== 'esp32' && (
-            <button
-              onClick={startLocalCamera}
-              disabled={localCamStarting}
-              className="px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition cursor-pointer"
-            >
-              <Camera className="w-3.5 h-3.5 text-emerald-400" />
-              <span>{localCamStarting ? 'Starting...' : 'Start Camera'}</span>
-            </button>
+          {/* Camera Active Controls: Flip / Stop / Start */}
+          {cameraActive && activeMediaStream ? (
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={flipCamera}
+                title="Flip between Front and Back Camera"
+                className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <SwitchCamera className="w-3.5 h-3.5" />
+                <span>Flip Cam</span>
+              </button>
+              <button
+                onClick={stopLocalCamera}
+                className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <VideoOff className="w-3.5 h-3.5" />
+                <span>Stop</span>
+              </button>
+            </div>
+          ) : (
+            cameraSource !== 'esp32' && (
+              <button
+                onClick={() => startLocalCamera('user')}
+                disabled={localCamStarting}
+                className="px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+              >
+                <Camera className="w-3.5 h-3.5 text-emerald-400" />
+                <span>{localCamStarting ? 'Connecting...' : 'Connect Camera'}</span>
+              </button>
+            )
           )}
 
           {/* Primary Take Snapshot Button */}
@@ -436,6 +492,20 @@ export const VisionView = () => {
         </div>
       </div>
 
+      {/* Camera Permission / Hardware Error Banner */}
+      {cameraError && (
+        <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-semibold flex items-start gap-2.5 shadow-xs">
+          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <div className="font-bold text-amber-950">Camera Connection Notice</div>
+            <p className="text-amber-800">{cameraError}</p>
+            <div className="text-[11px] text-amber-700 font-medium">
+              💡 Tip: If using Chrome/Edge, click the tune/lock icon in the URL bar and toggle <strong>Camera: Allow</strong>, or make sure no other program (Zoom/Teams) is using the webcam.
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Snapshot Error Banner */}
       {snapshotError && (
         <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-center gap-2 shadow-xs animate-shake">
@@ -473,15 +543,18 @@ export const VisionView = () => {
                       ESP32-CAM STREAM STANDBY
                     </div>
                     <p className="text-xs text-slate-400 max-w-sm">
-                      ESP32-CAM stream is optional. You can use the primary <strong>Mobile Camera</strong> for live HD patrol feed.
+                      ESP32-CAM stream is optional. You can connect your <strong>Laptop Webcam</strong> or <strong>Mobile Phone</strong> for the live HD patrol feed.
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => setCameraSource('mobile')}
+                      onClick={() => {
+                        setCameraSource('mobile');
+                        startLocalCamera('user');
+                      }}
                       className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs cursor-pointer shadow-xs"
                     >
-                      Switch to Mobile Camera
+                      Connect Laptop / Mobile Cam
                     </button>
                     <button
                       onClick={handleReconnect}
@@ -524,27 +597,35 @@ export const VisionView = () => {
                     <Camera className="w-6 h-6" />
                   </div>
                   <div>
-                    <div className="text-sm font-black text-slate-200">PRAHARI MOBILE CAMERA (PRIMARY)</div>
+                    <div className="text-sm font-black text-slate-200">PRAHARI LIVE CAMERA MONITOR</div>
                     <p className="text-xs text-slate-400 max-w-sm mt-1">
-                      Mount smartphone on robot mast or start direct camera broadcast. Live video will stream to command center in HD.
+                      Connect your laptop webcam directly or stream from a smartphone mounted on the robot mast.
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
                     <button
-                      onClick={startLocalCamera}
+                      onClick={() => startLocalCamera('user')}
                       disabled={localCamStarting}
-                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
+                      className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
                     >
-                      <Camera className="w-3.5 h-3.5" />
-                      <span>{localCamStarting ? 'Starting Camera...' : 'Start Device Camera'}</span>
+                      <Laptop className="w-3.5 h-3.5" />
+                      <span>{localCamStarting ? 'Connecting...' : 'Connect Laptop Webcam'}</span>
+                    </button>
+                    <button
+                      onClick={() => startLocalCamera('environment')}
+                      disabled={localCamStarting}
+                      className="px-4 py-2.5 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <Smartphone className="w-3.5 h-3.5" />
+                      <span>Connect Rear / Mobile Cam</span>
                     </button>
                     <a
                       href="/mobile-camera"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+                      className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1.5 cursor-pointer"
                     >
-                      <span>Open Mast Node Page ↗</span>
+                      <span>Open Phone Node Broadcast Page ↗</span>
                     </a>
                   </div>
                 </div>
