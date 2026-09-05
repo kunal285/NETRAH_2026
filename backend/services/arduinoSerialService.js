@@ -23,19 +23,19 @@ class ArduinoSerialService extends EventEmitter {
     this.parser = null;
     this.io = null;
 
-    // Latest Live Telemetry State
+    // Latest Live Telemetry State (Default OFFLINE until Arduino connects)
     this.telemetry = {
       type: 'telemetry',
       robotId: 'PRAHARI-01',
       status: 'OFFLINE', // 'ONLINE' | 'OFFLINE'
-      battery: 82,
-      voltage: 35.8,
+      battery: 0,
+      voltage: 0.0,
       leftMotor: 0,
       rightMotor: 0,
       leftCurrent: 0.0,
       rightCurrent: 0.0,
-      temperature: 38,
-      obstacle: 120,
+      temperature: 0,
+      obstacle: 0,
       rcStatus: 'DISCONNECTED',
       arduinoStatus: 'DISCONNECTED',
       cameraStatus: process.env.ESP32_CAM_STREAM_URL || process.env.ROBOT_CAMERA_STREAM_URL ? 'CONNECTED' : 'DISCONNECTED',
@@ -47,8 +47,21 @@ class ArduinoSerialService extends EventEmitter {
     this.lastCommandSentAt = 0;
     this.lastTelemetryReceivedAt = 0;
 
-    // Start auto-connect / simulation lifecycle
+    // Start auto-connect lifecycle
     this.init();
+
+    // Telemetry Watchdog: If no packet received for > 3.5s, mark Arduino DISCONNECTED and robot OFFLINE
+    setInterval(() => {
+      if (this.isConnected && !this.isSimulated) {
+        const elapsed = Date.now() - this.lastTelemetryReceivedAt;
+        if (elapsed > 4000) {
+          console.warn('[ARDUINO SERIAL] Telemetry timeout (>4s). Marking Arduino DISCONNECTED.');
+          this.telemetry.status = 'OFFLINE';
+          this.telemetry.arduinoStatus = 'DISCONNECTED';
+          this._broadcastStatus();
+        }
+      }
+    }, 2000);
   }
 
   setSocketIO(io) {
@@ -56,7 +69,6 @@ class ArduinoSerialService extends EventEmitter {
   }
 
   async init() {
-    // Attempt dynamic import of serialport
     let SerialPortClass = null;
     let ReadlineParserClass = null;
 
@@ -66,19 +78,25 @@ class ArduinoSerialService extends EventEmitter {
       const parserPkg = await import('@serialport/parser-readline');
       ReadlineParserClass = parserPkg.ReadlineParser;
     } catch {
-      // serialport package optional / fallback to simulation mode
+      // serialport package optional
     }
 
-    if (SerialPortClass && !process.env.DEMO_MODE) {
+    if (process.env.DEMO_MODE === 'true') {
+      this._startSimulationMode();
+    } else if (SerialPortClass) {
       this._connectPhysicalSerial(SerialPortClass, ReadlineParserClass);
     } else {
-      this._startSimulationMode();
+      console.log('[ARDUINO SERIAL] Serial driver standby. Robot is OFFLINE until Arduino Nano is connected via USB.');
+      this.isConnected = false;
+      this.telemetry.status = 'OFFLINE';
+      this.telemetry.arduinoStatus = 'DISCONNECTED';
+      this._broadcastStatus();
     }
   }
 
-  _connectPhysicalSerial(SerialPortClass, ReadlineParserClass) {
+  async _connectPhysicalSerial(SerialPortClass, ReadlineParserClass) {
     try {
-      console.log(`[ARDUINO SERIAL] Attempting connection to Arduino Nano on ${this.portName} (${this.baudRate} baud)...`);
+      console.log(`[ARDUINO SERIAL] Searching for Arduino Nano on ${this.portName}...`);
 
       this.serialPort = new SerialPortClass({
         path: this.portName,
@@ -96,28 +114,37 @@ class ArduinoSerialService extends EventEmitter {
       this.serialPort.on('open', () => {
         this.isConnected = true;
         this.isSimulated = false;
+        this.lastTelemetryReceivedAt = Date.now();
         this.telemetry.status = 'ONLINE';
         this.telemetry.arduinoStatus = 'CONNECTED';
-        console.log(`[ARDUINO SERIAL] Connected to Arduino Nano on ${this.portName}!`);
+        console.log(`[ARDUINO SERIAL] 🟢 Connected to Arduino Nano on ${this.portName}! Robot is now ONLINE.`);
         this._broadcastStatus();
       });
 
       this.serialPort.on('error', (err) => {
-        console.warn(`[ARDUINO SERIAL] Serial port warning (${err.message}). Entering fallback mode.`);
+        console.warn(`[ARDUINO SERIAL] Arduino Nano not detected on ${this.portName} (${err.message}). Robot status: OFFLINE.`);
         this.isConnected = false;
-        this._startSimulationMode();
+        this.telemetry.status = 'OFFLINE';
+        this.telemetry.arduinoStatus = 'DISCONNECTED';
+        this._broadcastStatus();
+        setTimeout(() => this.init(), 5000);
       });
 
       this.serialPort.on('close', () => {
-        console.warn('[ARDUINO SERIAL] Serial port closed. Reconnecting in 3s...');
+        console.warn('[ARDUINO SERIAL] 🔴 Arduino Nano disconnected. Robot status: OFFLINE.');
         this.isConnected = false;
+        this.telemetry.status = 'OFFLINE';
         this.telemetry.arduinoStatus = 'DISCONNECTED';
         this._broadcastStatus();
         setTimeout(() => this.init(), 3000);
       });
     } catch (err) {
-      console.warn(`[ARDUINO SERIAL] Physical serial initialization skipped: ${err.message}`);
-      this._startSimulationMode();
+      console.warn(`[ARDUINO SERIAL] Arduino Nano not found on ${this.portName}. Robot is OFFLINE.`);
+      this.isConnected = false;
+      this.telemetry.status = 'OFFLINE';
+      this.telemetry.arduinoStatus = 'DISCONNECTED';
+      this._broadcastStatus();
+      setTimeout(() => this.init(), 5000);
     }
   }
 
@@ -127,14 +154,14 @@ class ArduinoSerialService extends EventEmitter {
     this.isConnected = true;
     this.telemetry.status = 'ONLINE';
     this.telemetry.arduinoStatus = 'CONNECTED';
-    console.log('[ARDUINO SERIAL] Active in Responsive Differential Drive Simulation Mode (Arduino Nano + 2x BTS7960 + ESP32-CAM)');
+    console.log('[ARDUINO SERIAL] Active in DEMO / Simulation Mode (DEMO_MODE=true)');
 
     // 10 Hz Telemetry Loop
     setInterval(() => {
       if (this.isSimulated) {
         this.telemetry.timestamp = new Date().toISOString();
-        this.telemetry.voltage = Number((35.6 + Math.sin(Date.now() / 10000) * 0.4).toFixed(1));
-        this.telemetry.battery = Math.max(0, Math.min(100, Math.round(((this.telemetry.voltage - 31.0) / (37.8 - 31.0)) * 100)));
+        this.telemetry.voltage = Number((11.8 + Math.sin(Date.now() / 10000) * 0.2).toFixed(1));
+        this.telemetry.battery = Math.max(0, Math.min(100, Math.round(((this.telemetry.voltage - 9.0) / (12.6 - 9.0)) * 100)));
         this.telemetry.temperature = Math.round(38 + Math.abs(this.telemetry.leftMotor) * 0.05);
         this.telemetry.obstacle = Math.max(25, Math.round(120 - Math.abs(this.telemetry.leftMotor) * 0.3));
 

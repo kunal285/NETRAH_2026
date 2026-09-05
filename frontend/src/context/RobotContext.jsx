@@ -70,7 +70,7 @@ export const RobotProvider = ({ children }) => {
   });
 
   const [robotStatus, setRobotStatus] = useState('OFFLINE'); // 'ONLINE' | 'OFFLINE' | 'CONNECTING'
-  const [arduinoStatus, setArduinoStatus] = useState('CONNECTED'); // 'CONNECTED' | 'DISCONNECTED'
+  const [arduinoStatus, setArduinoStatus] = useState('DISCONNECTED'); // 'CONNECTED' | 'DISCONNECTED'
   const [rcStatus, setRcStatus] = useState('DISCONNECTED'); // 'CONNECTED' | 'DISCONNECTED'
   const [controlMode, setControlMode] = useState('WEB'); // 'WEB' | 'RC' | 'AUTO' | 'DEMO'
   const [speedLimiter, setSpeedLimiter] = useState(70); // 25, 50, 75, 100
@@ -330,7 +330,11 @@ export const RobotProvider = ({ children }) => {
       if (healthRes.status === 'fulfilled' && healthRes.value) {
         setBackendOnline(true);
         setDatabaseStatus(healthRes.value.database === 'ok' ? 'connected' : 'fallback');
-        if (healthRes.value.robot === 'online') setRobotStatus('ONLINE');
+        const isArdConnected = healthRes.value.arduinoNano === 'connected';
+        const isRobOnline = healthRes.value.robot === 'online' && isArdConnected;
+        setArduinoStatus(isArdConnected ? 'CONNECTED' : 'DISCONNECTED');
+        setRobotStatus(isRobOnline ? 'ONLINE' : 'OFFLINE');
+        setIsLiveDevice(isRobOnline);
         if (healthRes.value.s3 === 'ok') setS3Status('OK');
       }
 
@@ -445,10 +449,17 @@ export const RobotProvider = ({ children }) => {
       if (!data) return;
       if (data.robotId && data.robotId !== selectedRobotId) return;
 
-      setIsLiveDevice(true);
-      setRobotStatus('ONLINE');
+      const isArdConnected = data.arduinoStatus === 'CONNECTED' || (data.arduinoStatus == null && data.status === 'ONLINE');
+      const isOnline = isArdConnected && data.status !== 'OFFLINE';
+
+      setArduinoStatus(isArdConnected ? 'CONNECTED' : 'DISCONNECTED');
+      setRobotStatus(isOnline ? 'ONLINE' : 'OFFLINE');
+      setIsLiveDevice(isOnline);
+
       const nowIso = data.timestamp || new Date().toISOString();
-      setLastTelemetryTimestamp(nowIso);
+      if (isOnline) {
+        setLastTelemetryTimestamp(nowIso);
+      }
 
       // Handle battery (both Arduino and schema format)
       const volt = data.voltage != null ? data.voltage : data.batteryVoltage;
