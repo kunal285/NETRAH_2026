@@ -6,6 +6,12 @@ import {
   Eye,
   Camera,
   CheckCircle2,
+  RefreshCw,
+  VideoOff,
+  SwitchCamera,
+  AlertTriangle,
+  Laptop,
+  Smartphone,
 } from 'lucide-react';
 import { api } from '../../lib/api.js';
 
@@ -21,6 +27,15 @@ export const LivePerceptionCanvas = ({ videoRef }) => {
     activeMediaStream,
     cameraActive,
     cameraSource,
+    setCameraSource,
+    liveMobileFrame,
+    startLocalCamera,
+    stopLocalCamera,
+    flipCamera,
+    robotStatus,
+    activeFacingMode,
+    cameraError,
+    localCamStarting,
   } = useRobot();
 
   const containerRef = useRef(null);
@@ -30,6 +45,8 @@ export const LivePerceptionCanvas = ({ videoRef }) => {
   const [showLanes, setShowLanes] = useState(true);
   const [showCrosswalk, setShowCrosswalk] = useState(true);
   const [savedSnapshot, setSavedSnapshot] = useState(null);
+  const [snapshotState, setSnapshotState] = useState('idle');
+  const [snapshotResult, setSnapshotResult] = useState(null);
 
   // Attach live MediaStream to video element so real camera footage displays
   useEffect(() => {
@@ -171,9 +188,6 @@ export const LivePerceptionCanvas = ({ videoRef }) => {
     }
   }, [liveDetections, showHUD, showLanes, showCrosswalk, crosswalkRisk]);
 
-  const [snapshotState, setSnapshotState] = useState('idle'); // 'idle' | 'capturing' | 'captured' | 'uploaded' | 'error'
-  const [snapshotResult, setSnapshotResult] = useState(null);
-
   const captureSnapshot = async () => {
     if (snapshotState === 'capturing') return;
     setSnapshotState('capturing');
@@ -234,11 +248,31 @@ export const LivePerceptionCanvas = ({ videoRef }) => {
             <div className="text-xs font-bold text-slate-900 uppercase tracking-wider">
               LIVE TRAFFIC PERCEPTION VIEWPORT
             </div>
-            <div className="text-[11px] text-slate-500">Real-time Multi-Lane Detection</div>
+            <div className="text-[11px] text-slate-500">Real-time YOLOv8 & Multi-Lane Detection</div>
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 text-xs">
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          {cameraActive && (
+            <>
+              <button
+                onClick={flipCamera}
+                title="Flip between Front and Rear Camera"
+                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition cursor-pointer flex items-center gap-1"
+              >
+                <SwitchCamera className="w-3 h-3" />
+                <span>Flip ({activeFacingMode === 'user' ? 'Front' : 'Rear'})</span>
+              </button>
+              <button
+                onClick={stopLocalCamera}
+                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition cursor-pointer flex items-center gap-1"
+              >
+                <VideoOff className="w-3 h-3" />
+                <span>Stop</span>
+              </button>
+            </>
+          )}
+
           <button
             onClick={() => setShowLanes(!showLanes)}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer ${
@@ -290,12 +324,28 @@ export const LivePerceptionCanvas = ({ videoRef }) => {
         </div>
       </div>
 
+      {/* Camera Error Banner */}
+      {cameraError && (
+        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs font-semibold flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>{cameraError}</span>
+          </div>
+          <button
+            onClick={() => startLocalCamera('user')}
+            className="px-2.5 py-1 rounded-lg bg-amber-600 text-white text-[11px] font-bold hover:bg-amber-700 cursor-pointer shrink-0"
+          >
+            Retry Laptop Cam
+          </button>
+        </div>
+      )}
+
       {/* Main Viewport Container */}
       <div
         ref={containerRef}
         className="relative aspect-video w-full rounded-xl bg-slate-950 border border-slate-800 overflow-hidden flex items-center justify-center shadow-inner group"
       >
-        {/* Live Camera Video Stream Footage */}
+        {/* 1. Local MediaStream Video Track */}
         <video
           ref={videoDisplayRef}
           autoPlay
@@ -306,14 +356,66 @@ export const LivePerceptionCanvas = ({ videoRef }) => {
           }`}
         />
 
-        {/* Synthetic Road / Optical Stream backdrop if video not attached */}
+        {/* 2. Remote Broadcasted Mobile Frame */}
+        {!activeMediaStream && liveMobileFrame?.image && (
+          <img
+            src={liveMobileFrame.image}
+            alt="Live Remote Robot Mast Camera"
+            className="absolute inset-0 w-full h-full object-cover z-0"
+          />
+        )}
+
+        {/* 3. Standby State with 1-click start buttons */}
+        {!activeMediaStream && !liveMobileFrame?.image && (
+          <div className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center p-6 text-center space-y-3 z-0">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+              <Camera className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="text-sm font-black text-slate-200">LIVE PERCEPTION FEED STANDBY</div>
+              <p className="text-xs text-slate-400 max-w-sm mt-1">
+                Connect your laptop webcam or smartphone mast camera to feed real-time frames into the YOLOv8 vision pipeline.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+              <button
+                onClick={() => startLocalCamera('user')}
+                disabled={localCamStarting}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <Laptop className="w-3.5 h-3.5" />
+                <span>{localCamStarting ? 'Connecting...' : '💻 Connect Laptop Webcam'}</span>
+              </button>
+              <button
+                onClick={() => startLocalCamera('environment')}
+                disabled={localCamStarting}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+              >
+                <Smartphone className="w-3.5 h-3.5" />
+                <span>📱 Connect Mobile / Rear Cam</span>
+              </button>
+              <a
+                href="/mobile-camera"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 font-bold text-xs flex items-center gap-1.5 cursor-pointer border border-slate-700"
+              >
+                <span>Open Phone Node ↗</span>
+              </a>
+            </div>
+          </div>
+        )}
+
+        {/* Optical Stream backdrop if video not attached */}
         <div className={`absolute inset-0 flex flex-col justify-between p-4 pointer-events-none z-10 ${
-          activeMediaStream ? 'bg-transparent' : 'bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900'
+          activeMediaStream || liveMobileFrame ? 'bg-transparent' : 'bg-transparent'
         }`}>
           <div className="flex justify-between items-start text-[10px] text-slate-400">
             <div className="bg-slate-900/90 backdrop-blur px-2.5 py-1 rounded-md border border-slate-700 flex items-center gap-2">
-              <span className={`w-2 h-2 rounded-full ${activeMediaStream ? 'bg-emerald-400 animate-ping' : 'bg-slate-500'}`} />
-              <span>SRC: {cameraSource?.toUpperCase() || 'LOCAL CAM'}</span>
+              <span className={`w-2 h-2 rounded-full ${activeMediaStream || liveMobileFrame ? 'bg-emerald-400 animate-ping' : 'bg-slate-500'}`} />
+              <span className="font-bold text-white">
+                {activeMediaStream ? (robotStatus === 'OFFLINE' ? '🟢 WEBCAM (ROBOT OFFLINE FALLBACK)' : '🟢 LOCAL CAM LIVE') : liveMobileFrame ? '🟢 PHONE NODE LIVE' : '⚪ CAMERA STANDBY'}
+              </span>
             </div>
             <div className="bg-slate-900/90 backdrop-blur px-2.5 py-1 rounded-md border border-slate-700 text-emerald-400 font-bold">
               {isLiveAiMode ? 'LIVE YOLOv8 INFERENCE' : 'DEMO SYNTHETIC BENCH'}
@@ -321,10 +423,10 @@ export const LivePerceptionCanvas = ({ videoRef }) => {
           </div>
 
           {/* If no objects detected, show clean HUD status */}
-          {(!liveDetections || liveDetections.length === 0) && (
+          {(!liveDetections || liveDetections.length === 0) && (activeMediaStream || liveMobileFrame) && (
             <div className="text-center space-y-1 z-10">
               <div className="inline-block px-3 py-1 rounded-full bg-slate-900/80 border border-slate-800 text-xs text-slate-300 font-semibold">
-                {cameraActive ? 'Scanning roadway — No objects detected' : 'Camera stream offline — Click Start Camera'}
+                Scanning roadway — No objects detected
               </div>
             </div>
           )}

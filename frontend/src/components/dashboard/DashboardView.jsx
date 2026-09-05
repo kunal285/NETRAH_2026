@@ -404,7 +404,7 @@ export const DashboardView = () => {
                   {cameraSource === 'esp32' || cameraSource === 'robot'
                     ? (!streamError ? '● LIVE (ESP32-CAM)' : 'OFFLINE')
                     : cameraActive
-                    ? '● LIVE (MOBILE CAMERA)'
+                    ? (robotStatus === 'OFFLINE' ? '● LIVE (WEBCAM FALLBACK)' : '● LIVE (WEBCAM / CAM)')
                     : liveMobileFrame
                     ? '● LIVE (PHONE BROADCAST)'
                     : 'STANDBY'}

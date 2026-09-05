@@ -295,6 +295,99 @@ export const RobotProvider = ({ children }) => {
     return startLocalCamera(nextMode);
   }, [activeFacingMode, startLocalCamera]);
 
+  // Auto-connect to laptop / device webcam when robot is OFFLINE
+  const autoWebcamAttemptedRef = useRef(false);
+  const framePipelineIntervalRef = useRef(null);
+  const hiddenPipelineVideoRef = useRef(null);
+
+  useEffect(() => {
+    if (robotStatus === 'OFFLINE') {
+      // If robot is offline and no camera stream is active yet, automatically connect laptop webcam
+      if (!activeMediaStream && !liveMobileFrame && !cameraActive && !localCamStarting && !autoWebcamAttemptedRef.current) {
+        console.log('[RobotContext] 🤖 Robot is OFFLINE -> Automatically connecting to local webcam fallback...');
+        autoWebcamAttemptedRef.current = true;
+        startLocalCamera('user').catch((err) => {
+          console.warn('[RobotContext] Auto-webcam connection attempt notice:', err);
+        });
+      }
+    } else {
+      // If robot comes online, reset the flag so if it goes offline again in future, auto-connect triggers
+      autoWebcamAttemptedRef.current = false;
+    }
+  }, [robotStatus, activeMediaStream, liveMobileFrame, cameraActive, localCamStarting, startLocalCamera]);
+
+  // Background frame pipeline: continuously feeds activeMediaStream frames into YOLOv8 over Socket.IO
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    if (!activeMediaStream || !cameraActive) {
+      if (framePipelineIntervalRef.current) {
+        clearInterval(framePipelineIntervalRef.current);
+        framePipelineIntervalRef.current = null;
+      }
+      if (hiddenPipelineVideoRef.current) {
+        hiddenPipelineVideoRef.current.srcObject = null;
+        hiddenPipelineVideoRef.current = null;
+      }
+      return;
+    }
+
+    let videoEl = hiddenPipelineVideoRef.current;
+    if (!videoEl) {
+      videoEl = document.createElement('video');
+      videoEl.autoplay = true;
+      videoEl.playsInline = true;
+      videoEl.muted = true;
+      hiddenPipelineVideoRef.current = videoEl;
+    }
+
+    videoEl.srcObject = activeMediaStream;
+    videoEl.play().catch(() => {});
+
+    const canvas = document.createElement('canvas');
+    let isProcessing = false;
+
+    framePipelineIntervalRef.current = setInterval(() => {
+      if (!videoEl || videoEl.readyState < 2 || videoEl.videoWidth === 0 || isProcessing) return;
+
+      const targetW = 640;
+      const targetH = Math.round((videoEl.videoHeight / (videoEl.videoWidth || 1)) * targetW) || 360;
+      canvas.width = targetW;
+      canvas.height = targetH;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      ctx.drawImage(videoEl, 0, 0, targetW, targetH);
+      const frameBase64 = canvas.toDataURL('image/jpeg', 0.70);
+
+      const socket = socketClient.getSocket();
+      if (socket && socket.connected) {
+        isProcessing = true;
+        socket.emit('camera:frame', {
+          image: frameBase64,
+          timestamp: new Date().toISOString(),
+          cameraId: 'LOCAL_WEBCAM',
+          robotId: selectedRobotId || 'PRAHARI-01',
+          source: robotStatus === 'OFFLINE' ? 'WEBCAM_OFFLINE_FALLBACK' : 'WEBCAM_LIVE',
+        });
+        setTimeout(() => {
+          isProcessing = false;
+        }, 80);
+      }
+    }, 120); // ~8 FPS smooth YOLOv8 detection pipeline
+
+    return () => {
+      if (framePipelineIntervalRef.current) {
+        clearInterval(framePipelineIntervalRef.current);
+        framePipelineIntervalRef.current = null;
+      }
+      if (hiddenPipelineVideoRef.current) {
+        hiddenPipelineVideoRef.current.srcObject = null;
+        hiddenPipelineVideoRef.current = null;
+      }
+    };
+  }, [activeMediaStream, cameraActive, selectedRobotId, robotStatus]);
+
   // Calculate Data Freshness Helper
   const formatFreshness = useCallback((timestamp, staleThresholdSeconds = 3.0) => {
     if (!timestamp) return { text: 'NO DATA', isStale: true, isNull: true };

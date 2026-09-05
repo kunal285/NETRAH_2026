@@ -42,6 +42,7 @@ export const VisionView = () => {
     setActiveMediaStream,
     cameraActive,
     setCameraActive,
+    robotStatus,
     activeFacingMode,
     cameraError,
     localCamStarting,
@@ -643,7 +644,7 @@ export const VisionView = () => {
                     {cameraSource === 'esp32' || cameraSource === 'robot'
                       ? (!streamError ? 'LIVE ESP32-CAM' : 'NO FEED')
                       : cameraActive
-                      ? 'LIVE MOBILE CAM'
+                      ? (robotStatus === 'OFFLINE' ? 'LIVE WEBCAM (OFFLINE FALLBACK)' : 'LIVE WEBCAM')
                       : liveMobileFrame
                       ? 'LIVE PHONE BROADCAST'
                       : 'STANDBY'}
