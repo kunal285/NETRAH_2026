@@ -180,11 +180,13 @@ async function startServer() {
         resolution: '1920x1080',
       });
 
-      // Frame ingestion from mobile video stream / camera node / AI agent
-      socket.on('camera:frame', async (data) => {
+      // Frame ingestion from mobile video stream / camera node / AI agent (Ultra-low latency forwarding)
+      let isInferenceInFlight = false;
+
+      socket.on('camera:frame', (data) => {
         try {
           if (data && data.image) {
-            // Broadcast the live mobile frame to command center dashboards
+            // 1. Immediately forward video frame to all connected dashboards at line speed
             socket.broadcast.emit('camera:live_stream', {
               image: data.image,
               source: data.source || 'MOBILE_MOUNTED_CAMERA',
@@ -192,10 +194,23 @@ async function startServer() {
               robotId: data.robotId || 'PRAHARI-01',
               timestamp: data.timestamp || new Date().toISOString(),
             });
-          }
 
-          const result = await inferenceService.processFrame(data, io);
-          socket.emit('ai:frame_result', result);
+            // 2. Asynchronous, non-blocking AI inference without holding up video relay
+            if (!isInferenceInFlight) {
+              isInferenceInFlight = true;
+              inferenceService
+                .processFrame(data, io)
+                .then((result) => {
+                  socket.emit('ai:frame_result', result);
+                })
+                .catch((err) => {
+                  socket.emit('ai:frame_error', { error: err.message });
+                })
+                .finally(() => {
+                  isInferenceInFlight = false;
+                });
+            }
+          }
         } catch (err) {
           socket.emit('ai:frame_error', { error: err.message });
         }

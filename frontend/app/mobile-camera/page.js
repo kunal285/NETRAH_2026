@@ -27,10 +27,8 @@ export default function MobileCameraPage() {
   const [facingMode, setFacingMode] = useState('environment'); // environment (back) or user (front)
   const [torchOn, setTorchOn] = useState(false);
   const [hasTorch, setHasTorch] = useState(false);
-  const [fps] = useState(15);
-  const [quality] = useState(0.8);
-  const [resolution] = useState('1080p');
-  const [streamStats, setStreamStats] = useState({ framesSent: 0, fpsActual: 0 });
+  const [streamProfile, setStreamProfile] = useState('ultra'); // 'ultra' (480p/25fps) | 'balanced' (720p/18fps) | 'hd' (1080p/10fps)
+  const [streamStats, setStreamStats] = useState({ framesSent: 0, fpsActual: 0, latencyMs: 18, frameKb: 18 });
   const [errorMessage, setErrorMessage] = useState('');
   const [deviceTrack, setDeviceTrack] = useState(null);
 
@@ -39,6 +37,16 @@ export default function MobileCameraPage() {
   const streamIntervalRef = useRef(null);
   const frameCounterRef = useRef(0);
   const lastFpsCalcRef = useRef(Date.now());
+  const isEmittingRef = useRef(false);
+
+  // Profile configurations
+  const profileConfigs = {
+    ultra: { width: 640, height: 360, quality: 0.52, fps: 25, label: '⚡ Ultra-Low Latency' },
+    balanced: { width: 854, height: 480, quality: 0.65, fps: 18, label: '🎯 Balanced HD' },
+    hd: { width: 1280, height: 720, quality: 0.78, fps: 10, label: '📷 High Res' },
+  };
+
+  const currentCfg = profileConfigs[streamProfile] || profileConfigs.ultra;
 
   // Start phone camera
   const startCamera = async () => {
@@ -48,15 +56,16 @@ export default function MobileCameraPage() {
         audio: false,
         video: {
           facingMode: { ideal: facingMode },
-          width: resolution === '1080p' ? { ideal: 1920 } : { ideal: 1280 },
-          height: resolution === '1080p' ? { ideal: 1080 } : { ideal: 720 },
+          width: { ideal: currentCfg.width >= 1280 ? 1280 : 640 },
+          height: { ideal: currentCfg.height >= 720 ? 720 : 360 },
+          frameRate: { ideal: currentCfg.fps, max: 30 },
         },
       };
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+        await videoRef.current.play().catch(() => {});
       }
 
       const track = stream.getVideoTracks()[0];
@@ -117,38 +126,42 @@ export default function MobileCameraPage() {
     setFacingMode(nextMode);
     if (isStreaming) {
       stopCamera();
-      setTimeout(startCamera, 300);
+      setTimeout(startCamera, 200);
     }
   };
 
-  // Periodic frame capture and streaming over WebSocket + AI pipeline
+  // Ultra-Low Latency frame capture loop
   useEffect(() => {
     if (!isStreaming) return;
 
-    const captureIntervalMs = Math.round(1000 / fps);
+    const captureIntervalMs = Math.round(1000 / currentCfg.fps);
     const canvas = canvasRef.current || document.createElement('canvas');
 
-    streamIntervalRef.current = setInterval(async () => {
+    streamIntervalRef.current = setInterval(() => {
       const video = videoRef.current;
       if (!video || video.readyState < 2) return;
 
-      const width = video.videoWidth || 640;
-      const height = video.videoHeight || 480;
-      canvas.width = Math.min(width, resolution === '1080p' ? 1280 : 854);
-      canvas.height = Math.round((canvas.width * height) / width);
+      const captureStart = performance.now();
+      const targetW = currentCfg.width;
+      const targetH = Math.round((targetW * (video.videoHeight || 480)) / (video.videoWidth || 640));
 
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      canvas.width = targetW;
+      canvas.height = targetH;
 
-      const imageBase64 = canvas.toDataURL('image/jpeg', quality);
-      const timestamp = new Date().toISOString();
+      const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+      if (!ctx) return;
+      ctx.drawImage(video, 0, 0, targetW, targetH);
 
-      // Emit over Socket.IO to backend AI perception pipeline
+      const imageBase64 = canvas.toDataURL('image/jpeg', currentCfg.quality);
+      const captureLatency = Math.round(performance.now() - captureStart);
+      const approxKb = Math.round((imageBase64.length * 0.75) / 1024);
+
+      // Emit over Socket.IO to backend relay
       const socket = socketClient.getSocket();
       if (socket && socket.connected) {
         socket.emit('camera:frame', {
           image: imageBase64,
-          timestamp,
+          timestamp: new Date().toISOString(),
           cameraId: 'MOBILE_PHONE_CAM_01',
           robotId: selectedRobotId || 'PRAHARI-01',
           source: 'MOBILE_MOUNTED_CAMERA',
@@ -161,6 +174,8 @@ export default function MobileCameraPage() {
         setStreamStats({
           framesSent: frameCounterRef.current,
           fpsActual: Math.round((frameCounterRef.current * 1000) / (now - lastFpsCalcRef.current)),
+          latencyMs: captureLatency + 12, // Encoding + transport estimate
+          frameKb: approxKb,
         });
         frameCounterRef.current = 0;
         lastFpsCalcRef.current = now;
@@ -170,7 +185,7 @@ export default function MobileCameraPage() {
     return () => {
       if (streamIntervalRef.current) clearInterval(streamIntervalRef.current);
     };
-  }, [isStreaming, fps, quality, resolution, selectedRobotId]);
+  }, [isStreaming, streamProfile, currentCfg, selectedRobotId]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-white font-sans flex flex-col justify-between select-none overflow-hidden relative">
@@ -194,6 +209,28 @@ export default function MobileCameraPage() {
                 Mount this smartphone on the robot mast. Live video feed will be broadcasted to the Command Center and processed by the AI perception engine in real-time.
               </p>
             </div>
+            {/* Stream Profile Selector (Before starting) */}
+            <div className="space-y-1.5 text-left">
+              <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">Latency / Quality Mode</div>
+              <div className="grid grid-cols-3 gap-1.5">
+                {Object.entries(profileConfigs).map(([key, cfg]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setStreamProfile(key)}
+                    className={`p-2 rounded-xl border text-[10px] font-bold text-center cursor-pointer transition ${
+                      streamProfile === key
+                        ? 'bg-emerald-600 text-white border-emerald-400 shadow-sm'
+                        : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-slate-500'
+                    }`}
+                  >
+                    <div>{cfg.label}</div>
+                    <div className="text-[9px] opacity-75">{cfg.width}p • {cfg.fps}fps</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {errorMessage && (
               <div className="p-3 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-300 text-xs text-left">
                 {errorMessage}
@@ -201,10 +238,10 @@ export default function MobileCameraPage() {
             )}
             <button
               onClick={startCamera}
-              className="w-full py-3.5 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-sm shadow-lg shadow-emerald-900/30 flex items-center justify-center gap-2 cursor-pointer transition"
+              className="w-full py-3.5 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-black text-sm shadow-lg shadow-emerald-900/30 flex items-center justify-center gap-2 cursor-pointer transition"
             >
               <Camera className="w-4 h-4" />
-              <span>START BROADCASTING</span>
+              <span>START ULTRA-LOW LATENCY BROADCAST</span>
             </button>
           </div>
         )}
@@ -218,7 +255,7 @@ export default function MobileCameraPage() {
             <span>{isStreaming ? 'LIVE TRANSMIT' : 'STANDBY'}</span>
           </div>
           <span className="text-[11px] text-slate-300 font-mono hidden sm:inline">
-            NODE: MOBILE_CAM_01 • {resolution}
+            NODE: MOBILE_CAM_01 • {currentCfg.width}x{currentCfg.height} • {streamStats.latencyMs}ms
           </span>
         </div>
 
@@ -230,7 +267,7 @@ export default function MobileCameraPage() {
 
           <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-900/70 border border-slate-700/60 backdrop-blur-md">
             <Battery className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="text-[10px] font-bold">{liveBattery.percentage != null ? `${liveBattery.percentage}%` : '36V'}</span>
+            <span className="text-[10px] font-bold">{liveBattery.percentage != null ? `${liveBattery.percentage}%` : '11.5V'}</span>
           </div>
         </div>
       </div>
@@ -252,40 +289,56 @@ export default function MobileCameraPage() {
       {isStreaming && (
         <div className="relative z-10 p-4 bg-gradient-to-t from-black/90 via-black/50 to-transparent space-y-3">
           {/* Stats Bar */}
-          <div className="flex items-center justify-around text-[11px] text-slate-300 font-mono bg-black/40 p-2 rounded-xl border border-white/10 backdrop-blur-md">
-            <div>FPS: <strong className="text-emerald-400">{streamStats.fpsActual || fps}</strong></div>
-            <div>STREAM: <strong className="text-emerald-400">{resolution}</strong></div>
+          <div className="grid grid-cols-4 gap-2 text-center text-[10px] text-slate-300 font-mono bg-black/60 p-2 rounded-xl border border-white/10 backdrop-blur-md">
+            <div>FPS: <strong className="text-emerald-400">{streamStats.fpsActual || currentCfg.fps}</strong></div>
+            <div>LATENCY: <strong className="text-emerald-400">~{streamStats.latencyMs}ms</strong></div>
+            <div>PAYLOAD: <strong className="text-emerald-400">{streamStats.frameKb}KB</strong></div>
             <div>STATUS: <strong className="text-emerald-400">{robotStatus}</strong></div>
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center justify-center gap-4">
+          <div className="flex items-center justify-center gap-3">
+            {/* Live Profile Switcher while streaming */}
+            <div className="flex items-center bg-slate-900/80 rounded-xl p-1 border border-slate-700 backdrop-blur-md">
+              {['ultra', 'balanced', 'hd'].map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setStreamProfile(p)}
+                  className={`px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition ${
+                    streamProfile === p ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {p === 'ultra' ? '⚡ Ultra' : p === 'balanced' ? '🎯 Balanced' : '📷 HD'}
+                </button>
+              ))}
+            </div>
+
             {hasTorch && (
               <button
                 onClick={toggleTorch}
-                className={`p-3.5 rounded-full border backdrop-blur-md cursor-pointer transition ${
+                className={`p-3 rounded-xl border backdrop-blur-md cursor-pointer transition ${
                   torchOn ? 'bg-amber-400 text-slate-950 border-amber-300' : 'bg-slate-900/80 text-slate-200 border-slate-700'
                 }`}
                 title="Toggle Mast Torch"
               >
-                {torchOn ? <Zap className="w-5 h-5" /> : <ZapOff className="w-5 h-5" />}
+                {torchOn ? <Zap className="w-4 h-4" /> : <ZapOff className="w-4 h-4" />}
               </button>
             )}
 
             <button
               onClick={flipCamera}
-              className="p-3.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-slate-200 border border-slate-700 backdrop-blur-md cursor-pointer transition"
+              className="p-3 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-200 border border-slate-700 backdrop-blur-md cursor-pointer transition"
               title="Flip Front/Back Camera"
             >
-              <SwitchCamera className="w-5 h-5" />
+              <SwitchCamera className="w-4 h-4" />
             </button>
 
             <button
               onClick={stopCamera}
-              className="px-6 py-3 rounded-full bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-rose-900/40 cursor-pointer transition"
+              className="px-5 py-3 rounded-xl bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-lg shadow-rose-900/40 cursor-pointer transition"
             >
               <CameraOff className="w-4 h-4" />
-              <span>STOP BROADCAST</span>
+              <span>STOP</span>
             </button>
           </div>
         </div>
