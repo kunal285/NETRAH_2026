@@ -48,6 +48,10 @@ const snapshotSchema = new mongoose.Schema(
       type: String,
       default: 'MAST_CAMERA',
     },
+    imageBase64: {
+      type: String,
+      default: null,
+    },
     metadata: {
       type: mongoose.Schema.Types.Mixed,
       default: {},

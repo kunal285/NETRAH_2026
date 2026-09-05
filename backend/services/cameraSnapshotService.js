@@ -14,6 +14,7 @@ class CameraSnapshotService extends EventEmitter {
   constructor() {
     super();
     this.inMemorySnapshots = [];
+    this.snapshotBuffers = new Map();
     this.lastFrameAt = null;
     this.lastFrameBuffer = null;
     this.defaultWidth = 1280;
@@ -26,8 +27,7 @@ class CameraSnapshotService extends EventEmitter {
   _generateFallbackJpegBuffer(robotId = 'PRAHARI-01') {
     const timestampStr = new Date().toISOString();
     
-    // Valid 1x1 base JPEG header & footer wrapped minimal buffer with EXIF/JFIF metadata
-    // When canvas/image libraries aren't loaded in Node, use a robust pre-baked 1280x720 JPEG buffer
+    // Valid minimal JPEG buffer
     const minimalValidJpegBase64 =
       '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAALAAUBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=';
     
@@ -124,7 +124,7 @@ class CameraSnapshotService extends EventEmitter {
       mimeType = generated.mimeType;
     }
 
-    // 3. Upload Validation (Section 12)
+    // 3. Upload Validation
     if (!frameBuffer || frameBuffer.length === 0) {
       console.error('[SNAPSHOT] EMPTY_IMAGE_BUFFER');
       throw new Error('EMPTY_IMAGE_BUFFER');
@@ -138,9 +138,16 @@ class CameraSnapshotService extends EventEmitter {
     console.log(`[SNAPSHOT] Height: ${height}`);
     console.log(`[SNAPSHOT] Size: ${frameBuffer.length} bytes`);
 
-    // 4. AWS S3 Upload (Section 10 & 11)
+    // 4. AWS S3 Upload
     const snapshotId = `snap_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
     const s3Key = s3Service.generateSnapshotKey(snapshotId, robotId);
+
+    // Cache the raw buffer in memory by snapshotId
+    this.snapshotBuffers.set(snapshotId, frameBuffer);
+    if (this.snapshotBuffers.size > 200) {
+      const firstKey = this.snapshotBuffers.keys().next().value;
+      this.snapshotBuffers.delete(firstKey);
+    }
 
     console.log('[S3] Upload started');
     let uploadResult;
@@ -173,15 +180,20 @@ class CameraSnapshotService extends EventEmitter {
     const dStr = dateObj.toISOString().replace(/[-:T]/g, '').slice(0, 14);
     const filename = `prahari_${dStr}_001.jpg`;
 
+    const rawBase64 = frameBuffer.toString('base64');
+    const directDataUri = `data:${mimeType};base64,${rawBase64}`;
+
     const snapshotRecord = {
       snapshotId,
       snapshot_id: snapshotId,
       filename,
       robotId,
       s3Key: uploadResult.key || s3Key,
-      imageUrl: uploadResult.url || `/api/snapshots/${snapshotId}/image`,
-      url: uploadResult.url || `/api/snapshots/${snapshotId}/image`,
+      imageUrl: uploadResult.uploadStatus === 'UPLOADED' && uploadResult.url ? uploadResult.url : directDataUri,
+      url: uploadResult.uploadStatus === 'UPLOADED' && uploadResult.url ? uploadResult.url : directDataUri,
+      signedUrl: uploadResult.uploadStatus === 'UPLOADED' && uploadResult.url ? uploadResult.url : directDataUri,
       imageUploadStatus: uploadResult.uploadStatus || 'PENDING',
+      imageBase64: rawBase64,
       width,
       height,
       fileSize: frameBuffer.length,
@@ -210,7 +222,7 @@ class CameraSnapshotService extends EventEmitter {
       this.inMemorySnapshots.unshift(snapshotRecord);
     }
 
-    // 6. Real-Time Socket.IO Broadcast (Section 20)
+    // 6. Real-Time Socket.IO Broadcast
     if (io) {
       io.emit('snapshot:created', {
         snapshotId,
@@ -219,6 +231,8 @@ class CameraSnapshotService extends EventEmitter {
         robotId,
         imageUrl: snapshotRecord.imageUrl,
         url: snapshotRecord.imageUrl,
+        signedUrl: snapshotRecord.imageUrl,
+        imageBase64: snapshotRecord.imageBase64,
         s3Key: snapshotRecord.s3Key,
         width,
         height,
@@ -241,7 +255,16 @@ class CameraSnapshotService extends EventEmitter {
         const query = robotId ? { robotId } : {};
         const list = await Snapshot.find(query).sort({ createdAt: -1 }).limit(Number(limit)).lean();
         if (list && list.length > 0) {
-          return list;
+          return list.map((item) => {
+            const dataUri = item.imageBase64
+              ? (item.imageBase64.startsWith('data:') ? item.imageBase64 : `data:${item.mimeType || 'image/jpeg'};base64,${item.imageBase64}`)
+              : null;
+            return {
+              ...item,
+              imageUrl: item.imageUrl || dataUri || `/api/snapshots/${item.snapshotId}/image`,
+              signedUrl: item.signedUrl || item.imageUrl || dataUri || `/api/snapshots/${item.snapshotId}/image`,
+            };
+          });
         }
       } catch (err) {
         console.warn('[CameraSnapshotService] DB query failed, using in-memory list:', err.message);
@@ -272,17 +295,54 @@ class CameraSnapshotService extends EventEmitter {
 
     if (!item) return null;
 
-    let signedUrl = item.imageUrl;
-    if (item.s3Key) {
+    let resolvedUrl = item.imageUrl;
+    if (item.s3Key && item.imageUploadStatus === 'UPLOADED') {
       try {
-        signedUrl = await s3Service.getDetectionImageUrl(item.s3Key);
+        const s3Signed = await s3Service.getDetectionImageUrl(item.s3Key);
+        if (s3Signed) resolvedUrl = s3Signed;
       } catch {}
+    }
+
+    if (!resolvedUrl || resolvedUrl.startsWith('/api/')) {
+      if (item.imageBase64) {
+        resolvedUrl = item.imageBase64.startsWith('data:')
+          ? item.imageBase64
+          : `data:${item.mimeType || 'image/jpeg'};base64,${item.imageBase64}`;
+      }
     }
 
     return {
       ...item,
-      signedUrl: signedUrl || item.imageUrl,
+      signedUrl: resolvedUrl || `/api/snapshots/${snapshotId}/image`,
+      imageUrl: resolvedUrl || `/api/snapshots/${snapshotId}/image`,
     };
+  }
+
+  /**
+   * Returns specific raw JPEG buffer for direct GET endpoint
+   */
+  async getSnapshotBuffer(snapshotId, robotId = 'PRAHARI-01') {
+    if (this.snapshotBuffers.has(snapshotId)) {
+      return this.snapshotBuffers.get(snapshotId);
+    }
+
+    if (db.getStatus().connected) {
+      try {
+        const item = await Snapshot.findOne({ snapshotId }).lean();
+        if (item && item.imageBase64) {
+          const buf = Buffer.from(item.imageBase64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+          this.snapshotBuffers.set(snapshotId, buf);
+          return buf;
+        }
+      } catch {}
+    }
+
+    if (this.lastFrameBuffer) {
+      return this.lastFrameBuffer;
+    }
+
+    const generated = this._generateFallbackJpegBuffer(robotId);
+    return generated.buffer;
   }
 
   /**

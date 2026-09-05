@@ -111,6 +111,25 @@ export const VisionView = () => {
     setStreamKey(Date.now());
   };
 
+  const getSnapshotImageUrl = (snap) => {
+    if (!snap) return '';
+    if (snap.imageBase64) {
+      return snap.imageBase64.startsWith('data:')
+        ? snap.imageBase64
+        : `data:${snap.mimeType || 'image/jpeg'};base64,${snap.imageBase64}`;
+    }
+    if (snap.signedUrl && (snap.signedUrl.startsWith('http') || snap.signedUrl.startsWith('data:'))) {
+      return snap.signedUrl;
+    }
+    if (snap.imageUrl && (snap.imageUrl.startsWith('http') || snap.imageUrl.startsWith('data:'))) {
+      return snap.imageUrl;
+    }
+    if (snap.snapshotId || snap.snapshot_id) {
+      return `/api/snapshots/${snap.snapshotId || snap.snapshot_id}/image`;
+    }
+    return '';
+  };
+
   // Real Snapshot Pipeline Trigger (Section 1, 3, 4, 16)
   const handleTakeSnapshot = async () => {
     if (snapshotState === 'CAPTURING' || snapshotState === 'UPLOADING') return;
@@ -120,16 +139,18 @@ export const VisionView = () => {
     let base64Frame = null;
 
     // 1. Capture from active local video stream
-    if (videoRef.current && activeMediaStream) {
+    if (videoRef.current) {
       try {
-        const canvas = document.createElement('canvas');
         const v = videoRef.current;
-        canvas.width = v.videoWidth || 1280;
-        canvas.height = v.videoHeight || 720;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
-          base64Frame = canvas.toDataURL('image/jpeg', 0.92);
+        if (v.readyState >= 2 || v.videoWidth > 0) {
+          const canvas = document.createElement('canvas');
+          canvas.width = v.videoWidth || 1280;
+          canvas.height = v.videoHeight || 720;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+            base64Frame = canvas.toDataURL('image/jpeg', 0.92);
+          }
         }
       } catch (e) {
         console.warn('Local video canvas snapshot fallback:', e);
@@ -167,13 +188,22 @@ export const VisionView = () => {
       });
 
       if (res.success || res.snapshotId) {
+        const snapObj = {
+          ...res,
+          snapshotId: res.snapshotId || res.snapshot_id,
+          imageBase64: res.imageBase64 || (base64Frame ? base64Frame.replace(/^data:image\/\w+;base64,/, '') : null),
+          signedUrl: res.signedUrl || base64Frame || `/api/snapshots/${res.snapshotId || res.snapshot_id}/image`,
+          imageUrl: res.imageUrl || base64Frame || `/api/snapshots/${res.snapshotId || res.snapshot_id}/image`,
+          createdAt: res.createdAt || new Date().toISOString(),
+        };
+
         setSnapshotState('SAVED');
-        setPreviewSnapshot(res);
+        setPreviewSnapshot(snapObj);
 
         // Prepend to local history if not already added by socket
         setSnapshotsList((prev) => {
-          if (prev.some((s) => s.snapshotId === res.snapshotId)) return prev;
-          return [res, ...prev.slice(0, 49)];
+          const list = prev.filter((s) => (s.snapshotId || s.snapshot_id) !== snapObj.snapshotId);
+          return [snapObj, ...list.slice(0, 49)];
         });
 
         setTimeout(() => setSnapshotState('IDLE'), 3000);
@@ -489,10 +519,10 @@ export const VisionView = () => {
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {snapshotsList.map((snap, i) => {
-              const imgUrl = snap.signedUrl || snap.imageUrl || `/api/snapshots/${snap.snapshotId}/image`;
+              const imgUrl = getSnapshotImageUrl(snap);
               return (
                 <div
-                  key={snap.snapshotId || i}
+                  key={snap.snapshotId || snap._id || i}
                   onClick={() => setPreviewSnapshot(snap)}
                   className="bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl p-2 transition cursor-pointer space-y-2 group"
                 >
@@ -508,7 +538,7 @@ export const VisionView = () => {
                   </div>
                   <div className="space-y-0.5 text-[11px]">
                     <div className="font-bold text-slate-800 truncate">
-                      {snap.snapshotId}
+                      {snap.snapshotId || snap.snapshot_id}
                     </div>
                     <div className="text-slate-500 text-[10px] flex items-center justify-between">
                       <span>{snap.createdAt ? new Date(snap.createdAt).toLocaleTimeString() : 'Recent'}</span>
@@ -531,7 +561,7 @@ export const VisionView = () => {
                 <FileImage className="w-5 h-5 text-emerald-600" />
                 <div>
                   <div className="text-sm font-black text-slate-900 uppercase">SNAPSHOT DETAILS</div>
-                  <div className="text-[11px] text-slate-500 font-mono">{previewSnapshot.snapshotId}</div>
+                  <div className="text-[11px] text-slate-500 font-mono">{previewSnapshot.snapshotId || previewSnapshot.snapshot_id}</div>
                 </div>
               </div>
               <button
@@ -542,9 +572,9 @@ export const VisionView = () => {
               </button>
             </div>
 
-            <div className="aspect-video w-full rounded-2xl overflow-hidden bg-slate-950 relative border border-slate-200">
+            <div className="aspect-video w-full rounded-2xl overflow-hidden bg-slate-950 relative border border-slate-200 flex items-center justify-center">
               <img
-                src={previewSnapshot.signedUrl || previewSnapshot.imageUrl || `/api/snapshots/${previewSnapshot.snapshotId}/image`}
+                src={getSnapshotImageUrl(previewSnapshot)}
                 alt="Captured Snapshot"
                 className="w-full h-full object-contain"
               />
@@ -586,8 +616,8 @@ export const VisionView = () => {
               <button
                 onClick={() =>
                   downloadImage(
-                    previewSnapshot.signedUrl || previewSnapshot.imageUrl || `/api/snapshots/${previewSnapshot.snapshotId}/image`,
-                    `${previewSnapshot.snapshotId}.jpg`
+                    getSnapshotImageUrl(previewSnapshot),
+                    `${previewSnapshot.snapshotId || 'snapshot'}.jpg`
                   )
                 }
                 className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center gap-2 cursor-pointer shadow-xs"

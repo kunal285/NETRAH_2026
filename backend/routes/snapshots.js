@@ -20,10 +20,11 @@ const handleSnapshotCapture = async (req, res) => {
       io,
     });
 
-    let signedUrl = result.imageUrl;
+    let signedUrl = result.signedUrl || result.imageUrl;
     if (result.s3Key && result.imageUploadStatus === 'UPLOADED') {
       try {
-        signedUrl = await s3Service.getDetectionImageUrl(result.s3Key);
+        const s3Signed = await s3Service.getDetectionImageUrl(result.s3Key);
+        if (s3Signed) signedUrl = s3Signed;
       } catch {}
     }
 
@@ -37,6 +38,7 @@ const handleSnapshotCapture = async (req, res) => {
       url: signedUrl || result.imageUrl,
       imageUrl: result.imageUrl,
       signedUrl: signedUrl || result.imageUrl,
+      imageBase64: result.imageBase64,
       imageUploadStatus: result.imageUploadStatus,
       width: result.width,
       height: result.height,
@@ -130,7 +132,7 @@ snapshotsRouter.get('/:id/image', async (req, res) => {
       return res.redirect(snap.signedUrl);
     }
 
-    const frameBuf = await cameraSnapshotService.getLatestFrameBuffer(snap.robotId);
+    const frameBuf = await cameraSnapshotService.getSnapshotBuffer(req.params.id, snap.robotId);
     res.setHeader('Content-Type', snap.mimeType || 'image/jpeg');
     res.setHeader('Content-Length', frameBuf.length);
     res.setHeader('Cache-Control', 'public, max-age=86400');
